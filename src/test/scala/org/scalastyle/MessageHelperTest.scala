@@ -20,6 +20,11 @@ import org.scalatest.junit.AssertionsForJUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import scala.xml.XML
+import scala.xml.Elem
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
+import org.junit.runners.Parameterized.Parameters
 
 class MessageHelperTest extends AssertionsForJUnit {
   val classLoader = this.getClass().getClassLoader()
@@ -52,5 +57,38 @@ class MessageHelperTest extends AssertionsForJUnit {
   private[this] def assertMessage(id: String, suffix: String, fn: (String) => String) = {
     val key = id + "." + suffix
     assert(fn(id) != key, "checker " + id + " should have a (" + key + ")")
+  }
+}
+
+import scala.collection.JavaConversions.asJavaIterable
+
+object DocumentationTest {
+  val classLoader = this.getClass().getClassLoader()
+  val definition = ScalastyleDefinition.readFromXml(classLoader.getResourceAsStream("scalastyle_definition.xml"))
+  private def arr[T](a: List[T]) = a.map(al => Array(al.asInstanceOf[java.lang.Object]))
+
+  @Parameters(name= "{index}: documentation({0})")
+  def data(): java.lang.Iterable[Array[java.lang.Object]] = arr(definition.checkers.map(_.id))
+}
+
+@RunWith(classOf[Parameterized])
+class DocumentationTest(id: String) extends AssertionsForJUnit {
+  val classLoader = this.getClass().getClassLoader()
+  val documentation = XML.load(classLoader.getResourceAsStream("scalastyle_documentation.xml"))
+
+  // tests that for each class specified in scalastyle_definitions.xml
+  // there exists in scalastyle_documentation an entry for example-configuration and justification
+
+  @Test def testExampleConfiguration(): Unit = {
+    assertElementExists(id, "example-configuration", documentation)
+  }
+
+  @Test def testJustification(): Unit = {
+    assertElementExists(id, "justification", documentation)
+  }
+
+  private[this] def assertElementExists(id: String, name: String, elem: Elem) = {
+    val seq = (elem \\ "check" filter { _ \\ "@id" exists (_.text == id) }) \\ name
+    assertEquals("did not find " + name, 1, seq.size)
   }
 }
