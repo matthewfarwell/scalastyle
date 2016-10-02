@@ -30,6 +30,7 @@ import _root_.scalariform.parser.Param
 import _root_.scalariform.parser.ParamClauses
 import _root_.scalariform.parser.TmplDef
 import _root_.scalariform.parser.Type
+import scala.reflect.ClassTag
 
 object VisitorHelper {
   class Clazz[+T <: AstNode]()
@@ -42,19 +43,19 @@ object VisitorHelper {
     if (matches(t)) t :: l else l
   }
 
-  protected[scalariform] def getAllRecursive[T <: AstNode](ast: Any)(implicit manifest: Manifest[T]): List[T] = {
+  protected[scalariform] def getAllRecursive[T <: AstNode](ast: Any)(implicit manifest: ClassTag[T]): List[T] = {
     def fn(t : T): List[T] = List[T](t) ++ t.immediateChildren.flatMap(child => getAllRecursive[T](child))
 
     myVisit[T, T](manifest.runtimeClass.asInstanceOf[Class[T]], fn)(ast)
   }
 
-  protected[scalariform] def getAll[T <: AstNode](ast: Any)(implicit manifest: Manifest[T]): List[T] = {
+  protected[scalariform] def getAll[T <: AstNode](ast: Any)(implicit manifest: ClassTag[T]): List[T] = {
     def fn(t : T): List[T] = List[T](t)
 
     myVisit[T, T](manifest.runtimeClass.asInstanceOf[Class[T]], fn)(ast)
   }
 
-  protected[scalariform] def visit[T <: AstNode, X](fn: T => List[X])(ast: Any)(implicit manifest: Manifest[T]): List[X] = {
+  protected[scalariform] def visit[T <: AstNode, X](fn: T => List[X])(ast: Any)(implicit manifest: ClassTag[T]): List[X] = {
     myVisit[T, X](manifest.runtimeClass.asInstanceOf[Class[T]], fn)(ast)
   }
 

@@ -1,16 +1,38 @@
-import AssemblyKeys._
+lazy val root = (project in file(".")).
+  settings(
+    name := "scalastyle",
+    description := "Example sbt project that compiles using Dotty",
+    version := "0.1",
 
-name := "scalastyle"
+    // All the settings set below this line are important to get your project
+    // to compile with Dotty. Please read the comments carefully.
 
-organization := "org.scalastyle"
+    // Dotty version
+    scalaVersion := "0.1-SNAPSHOT",
+    scalaOrganization := "ch.epfl.lamp",
 
-scalaVersion := "2.10.5"
+    // Enable Scala 2 compatibility mode.
+    // This will allow you to use Scala 2 features that have been removed
+    // from Dotty, like procedure syntax.
+    // This is not required to compile code with Dotty, but it makes it easier
+    // to test Dotty on an existing Scala 2 code base.
+    // The long-term plan is to have a rewriting tool that can do most of the
+    // porting work for you.
+    scalacOptions ++= Seq("-language:Scala2"),
 
-scalacOptions ++= Seq("-deprecation", "-feature")
+    // Note: Dotty can use Scala 2.11 libraries so we set `scalaBinaryVersion`
+    // to `2.11` for convenience. However, if you publish an artefact compiled
+    // with Dotty, you should set it to `0.1`, this will force you to change
+    // your library dependencies to be of the form `"org.foo" % "bar_2.11" % "1.0"`
+    // instead of `"org.foo" %% "bar" % "1.0"`
+    scalaBinaryVersion := "2.11",
 
-crossScalaVersions := Seq("2.10.5", "2.11.6")
-
-description := "Scalastyle style checker for Scala"
+    // By default, sbt will depend on the scala-library version `scalaVersion`,
+    // so we need to override it.
+    autoScalaLibrary := false,
+    // 2.11.5 is the version used by Dotty itself currently, we do the same to
+    // avoid trouble.
+    libraryDependencies += "org.scala-lang" % "scala-library" % "2.11.5",
 
 libraryDependencies ++= Seq(
                         "org.scalariform" %% "scalariform" % "0.1.7",
@@ -18,83 +40,21 @@ libraryDependencies ++= Seq(
                         "junit" % "junit" % "4.11" % "test",
                         "com.novocode" % "junit-interface" % "0.10" % "test",
                         "com.google.guava" % "guava" % "17.0" % "test",
-                        "org.scalatest" %% "scalatest" % "2.2.2" % "test")
+                        "org.scalatest" %% "scalatest" % "2.2.2" % "test"),
 
-fork in Test := true
+    // Maintained at https://github.com/lampepfl/dotty/tree/master/bridge
+    scalaCompilerBridgeSource := ("ch.epfl.lamp" % "dotty-bridge" % "0.1.1-SNAPSHOT" % "component").sources(),
 
-javaOptions in Test += "-Dfile.encoding=UTF-8"
+    (scalastyleConfig in Compile) := file("lib/scalastyle_config.xml"),
+    (scalastyleFailOnError in Compile) := true,
 
-coverageHighlighting := {
-  if (scalaBinaryVersion.value == "2.10") false
-  else true
-}
+buildInfoSettings,
 
-publishMavenStyle := true
+sourceGenerators in Compile <+= buildInfo,
 
-publishTo := {
-  val nexus = "https://oss.sonatype.org/"
-  if (version.value.trim.endsWith("SNAPSHOT")) Some("snapshots" at nexus + "content/repositories/snapshots") 
-  else Some("releases"  at nexus + "service/local/staging/deploy/maven2")
-}
-
-licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))
-
-pomIncludeRepository := { _ => false }
-
-pomExtra := (
-  <url>http://www.scalastyle.org</url>
-  <scm>
-    <url>scm:git:git@github.com:scalastyle/scalastyle.git</url>
-    <connection>scm:git:git@github.com:scalastyle/scalastyle.git</connection>
-  </scm>
-  <developers>
-    <developer>
-      <id>matthewfarwell</id>
-      <name>Matthew Farwell</name>
-      <url>http://www.farwell.co.uk</url>
-    </developer>
-  </developers>)
-
-assemblySettings
-
-artifact in (Compile, assembly) ~= { art =>
-  art.copy(`classifier` = Some("batch"))
-}
-
-addArtifact(artifact in (Compile, assembly), assembly)
-
-mainClass in assembly := Some("org.scalastyle.Main")
-
-buildInfoSettings
-
-sourceGenerators in Compile <+= buildInfo
-
-buildInfoKeys := Seq[BuildInfoKey](organization, name, version, scalaVersion, sbtVersion)
+buildInfoKeys := Seq[BuildInfoKey](organization, name, version, scalaVersion, sbtVersion),
 
 buildInfoPackage := "org.scalastyle"
 
-seq(filterSettings: _*)
+  )
 
-if (System.getProperty("scalastyle.publish-ivy-only") == "true") {
-  Seq()
-}  else {
-  Seq(aetherPublishBothSettings: _*)
-}
-
-aether.Aether.aetherLocalRepo := Path.userHome / "dev" / "repo"
-
-EclipseKeys.createSrc := EclipseCreateSrc.Default + EclipseCreateSrc.Managed
-
-releaseSettings
-
-ReleaseKeys.crossBuild := true
-
-val dynamicPublish = Def.taskDyn {
-  if (version.value.trim.endsWith("SNAPSHOT")) {
-    Def.task { publish.value }
-  } else {
-    Def.task { PgpKeys.publishSigned.value }
-  }
-}
-
-ReleaseKeys.publishArtifactsAction := dynamicPublish.value

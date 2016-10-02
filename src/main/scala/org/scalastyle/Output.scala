@@ -131,28 +131,7 @@ object XmlOutput {
   case class Alert(filename: String, severity: String, message: String, source: Option[Class[_]], line: Option[Int], column: Option[Int])
 
   private[this] def toCheckstyleFormat[T <: FileSpec](messageHelper: MessageHelper, messages: Iterable[Message[T]]): Elem = {
-    <checkstyle version="5.0">
-      {messages.collect {
-      case StyleError(file, clazz, key, level, args, line, column, customMessage) =>
-        Alert(file.name, messageHelper.text(level.name), Output.findMessage(messageHelper, key, args, customMessage), Some(clazz), line, column)
-      case StyleException(file, clazz, message, stacktrace, line, column) =>
-        Alert(file.name, "error", message, clazz, line, column)
-    }.groupBy {
-      _.filename
-    }.map {
-      case (filename, alerts) =>
-        <file name={filename}>
-          {alerts.map {
-          case Alert(fn, severity, message, source, line, column) => {
-            val s = source.collect {
-              case x: Class[_] => x.getName
-            }
-              <error severity={severity} message={message}/> % attr("source", s) % attr("line", line) % attr("column", column)
-          }
-        }}
-        </file>
-    }}
-    </checkstyle>
+    ???
   }
 
   private[this] def attr(name: String, value: Option[Any]): xml.MetaData = value match {

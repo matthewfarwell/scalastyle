@@ -27,6 +27,7 @@ import org.scalastyle.scalariform.VisitorHelper.visit
 import _root_.scalariform.parser.BlockExpr
 import _root_.scalariform.parser.Expr
 import _root_.scalariform.parser.IfExpr
+import _root_.scalariform.parser.ExprElement
 
 class IfBraceChecker extends CombinedChecker {
   val DefaultSingleLineAllowed = true
@@ -95,7 +96,7 @@ class IfBraceChecker extends CombinedChecker {
       body.contents.head match {
         case e: BlockExpr => None
         case e: IfExpr => None
-        case e: Any => lines.toLineColumn(e.tokens.head.offset)
+        case e: ExprElement => lines.toLineColumn(e.tokens.head.offset)
       }
     } else {
       None

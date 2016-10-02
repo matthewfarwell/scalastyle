@@ -145,7 +145,6 @@ class CheckerUtils(classLoader: Option[ClassLoader] = None) {
    * If there is no encoding passed, we try the default, then UTF-8, then UTF-16, then ISO-8859-1
    */
   def readFile(file: String, encoding: Option[String])(implicit codec: Codec): String = {
-    @tailrec
     def readFileWithEncoding(file: String, encodings: List[String]): Option[String] = {
       if (encodings.isEmpty) {
         None
@@ -226,10 +225,10 @@ trait Checker[A] {
     val sErrorKey = customErrorKey.getOrElse(errorKey)
 
     p2 match {
-      case PositionError(position, args, errorKey) => StyleError(file, this.getClass(), errorKey.getOrElse(sErrorKey), level, args, customMessage = customMessage)
-      case FileError(args, errorKey) => StyleError(file, this.getClass(), errorKey.getOrElse(sErrorKey), level, args, None, None, customMessage)
-      case LineError(line, args, errorKey) => StyleError(file, this.getClass(), errorKey.getOrElse(sErrorKey), level, args, Some(line), None, customMessage)
-      case ColumnError(line, column, args, errorKey) => StyleError(file, this.getClass(), errorKey.getOrElse(sErrorKey), level, args, Some(line), Some(column), customMessage)
+      case PositionError(position, args, ek) => StyleError(file, this.getClass.asInstanceOf[Class[_ <: org.scalastyle.Checker[_]]], ek.getOrElse(sErrorKey), level, args, customMessage = customMessage)
+      case FileError(args, ek) => StyleError(file, this.getClass.asInstanceOf[Class[_ <: org.scalastyle.Checker[_]]], ek.getOrElse(sErrorKey), level, args, None, None, customMessage)
+      case LineError(line, args, ek) => StyleError(file, this.getClass.asInstanceOf[Class[_ <: org.scalastyle.Checker[_]]], ek.getOrElse(sErrorKey), level, args, Some(line), None, customMessage)
+      case ColumnError(line, column, args, ek) => StyleError(file, this.getClass.asInstanceOf[Class[_ <: org.scalastyle.Checker[_]]], ek.getOrElse(sErrorKey), level, args, Some(line), Some(column), customMessage)
     }
   }
 

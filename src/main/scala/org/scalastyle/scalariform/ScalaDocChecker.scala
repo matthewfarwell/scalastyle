@@ -346,7 +346,7 @@ object ScalaDocChecker {
         case TagRegex(tag, ref, rest) => Some(TagSclaDocLine(tag, ref, rest))
         case "/**"                    => None
         case "*/"                     => None
-        case text: Any                => Some(RawScalaDocLine(text))
+        case text: String             => Some(RawScalaDocLine(text))
       })
 
       def combineScalaDocFor[A](lines: List[ScalaDocLine], tag: String, f: (String, String) => A): List[A] = lines match {

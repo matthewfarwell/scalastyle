@@ -81,14 +81,12 @@ class PackageNamesChecker extends ScalariformChecker {
 
     def isPartOfPackageName(t: Token): Boolean = (t.tokenType == DOT) || (t.tokenType == VARID)
 
-    @annotation.tailrec
     def getNextPackageName(tokens: List[Token]): (List[Token], List[Token]) = tokens match {
       case Nil => (Nil, Nil)
       case hd :: tail if hd.tokenType == PACKAGE => tail.span(isPartOfPackageName(_))
-      case l: Any => getNextPackageName(l.dropWhile(tok => tok.tokenType != PACKAGE))
+      case l: List[Token] => getNextPackageName(l.dropWhile(tok => tok.tokenType != PACKAGE))
     }
 
-    @annotation.tailrec
     def getPackageNameLoop(tokens: List[Token], myAccumulator: List[List[Token]]): List[List[Token]] =
       getNextPackageName(tokens) match {
         case (Nil, Nil) => myAccumulator.reverse  // Return the result, but reverse since we gathered backward

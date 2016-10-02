@@ -116,34 +116,7 @@ object ScalastyleConfiguration {
   private[this] def toCDATA(s: String) = scala.xml.Unparsed("<![CDATA[" + s + "]]>")
 
   def toXml(scalastyleConfiguration: ScalastyleConfiguration): scala.xml.Elem = {
-    val elements = scalastyleConfiguration.checks.map(c => {
-      val parameters = if (c.parameters.size > 0) {
-        val ps = c.parameters.map(p => {
-          val text = toCDATA(p._2)
-          <parameter name={p._1}>{text}</parameter>
-        })
-        <parameters>{ps}</parameters>
-      } else {
-        scala.xml.Null
-      }
-      val customMessage = c.customMessage match {
-        case Some(s) => {
-          val text = toCDATA(s)
-          <customMessage>{text}</customMessage>
-        }
-        case None => scala.xml.Null
-      }
-      val check = <check class={c.className} level={c.level.name} enabled={if (c.enabled) True else False}>{customMessage}{parameters}</check>
-      c.customId match {
-        case Some(x) => check % Attribute(None, "customId", Text(x), scala.xml.Null)
-        case None => check
-      }
-    })
-
-    <scalastyle commentFilter={if (scalastyleConfiguration.commentFilter) Enabled else Disabled}>
-      <name>{scalastyleConfiguration.name}</name>
-      {elements}
-    </scalastyle>
+    ???
   }
 
   def toXmlString(scalastyleConfiguration: ScalastyleConfiguration, width: Int, step: Int): String =
