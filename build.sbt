@@ -15,7 +15,8 @@ description := "Scalastyle style checker for Scala"
 libraryDependencies ++= Seq(
                         "org.scalariform" %% "scalariform" % "0.2.0",
                         "com.typesafe" % "config" % "1.2.0",
-                        "org.scalameta" %% "scalameta" % "3.4.0",
+                        "org.scalameta" %% "scalameta" % "3.7.4",
+                        "org.scalameta" %% "contrib" % "3.7.4",
                         "junit" % "junit" % "4.11" % "test",
                         "com.novocode" % "junit-interface" % "0.10" % "test",
                         "com.google.guava" % "guava" % "17.0" % "test",

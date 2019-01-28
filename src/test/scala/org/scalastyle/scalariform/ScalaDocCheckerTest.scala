@@ -311,7 +311,7 @@ class ScalaDocCheckerTest extends AssertionsForJUnit with CheckerTest {
       def source(container: String) =
         s"""
            |$tlDoc
-           |$container Foo {
+           |$container {
            |  %s${what}
            |}
         """.stripMargin
@@ -322,7 +322,7 @@ class ScalaDocCheckerTest extends AssertionsForJUnit with CheckerTest {
           | */
         """.stripMargin
 
-      List(source("class"), source("case class"), source("object ")).foreach { source =>
+      List(source("class Foo"), source("case class Foo()"), source("object Foo")).foreach { source =>
         assertErrors(Nil, source format doc)
         assertErrors(if (checked) List(lineError(8, List(Missing))) else Nil, source format "")
       }
@@ -399,10 +399,10 @@ class ScalaDocCheckerTest extends AssertionsForJUnit with CheckerTest {
 
   @Test def ignoreTokenTypes(): Unit = {
 
-    val cases = Seq(Seq("val a = 1", "var a = 2") -> "PatDefOrDcl",
-      Seq("class A", "case class A", "object A", "trait A") -> "TmplDef",
-      Seq("type B = A") -> "TypeDefOrDcl",
-      Seq("def A(): Unit") -> "FunDefOrDcl")
+    val cases = Seq(Seq("/** doc */ class Foo { val a = 1 }", "/** doc */ class Foo { var a = 2 }") -> "PatDefOrDcl",
+      Seq("class A", "case class A()", "object A", "trait A") -> "TmplDef",
+      Seq("/** doc */ class Foo { type B = A }") -> "TypeDefOrDcl",
+      Seq("/** doc */ class Foo { def A(): Unit }") -> "FunDefOrDcl")
 
     for ((declerations, ignoreTokenType) <- cases;
          decleration <- declerations) {
@@ -470,6 +470,9 @@ class ScalaDocCheckerTest extends AssertionsForJUnit with CheckerTest {
     // refer: https://github.com/scalastyle/scalastyle/issues/277
     val sourceScalaDoc =
       """
+        | /**
+        |   * doc
+        |   */
         | object X {
         |   /**
         |     *
@@ -481,6 +484,9 @@ class ScalaDocCheckerTest extends AssertionsForJUnit with CheckerTest {
 
     val sourceJavaDoc =
       """
+        | /**
+        |  *
+        |  */
         | object X {
         |   /**
         |    *

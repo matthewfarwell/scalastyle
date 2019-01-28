@@ -33,7 +33,6 @@ import scala.io.Codec
 import scala.meta.Source
 import scala.meta.Tree
 import scala.meta._
-import org.scalameta.logger
 
 case class Line(text: String, start: Int, end: Int)
 
@@ -114,11 +113,8 @@ class CheckerUtils(classLoader: Option[ClassLoader] = None) {
   }
 
   def parseScalameta(source: String): Tree = {
-    val tree = source.parse[Source].get
-    //logger.elem(tree.syntax)
-    //logger.elem(tree.structure)
-
-    tree
+    val s = source.replaceAll("@return[ \t]", "@returns ") // hack for scaladoc parser
+    s.parse[Source].get
   }
 
   def verifySource[T <: FileSpec](configuration: ScalastyleConfiguration, classes: List[ConfigurationChecker], file: T, source: String): List[Message[T]] = {
@@ -278,7 +274,7 @@ trait PositionErrorTrait {
   protected def getAllTokens[T <: scala.meta.tokens.Token](tree: Tree)(implicit manifest: Manifest[T]): Seq[T] = {
     for {
       t <- tree.tokens
-      if (manifest.runtimeClass.isAssignableFrom(t.getClass))
+      if manifest.runtimeClass.isAssignableFrom(t.getClass)
     } yield t.asInstanceOf[T]
   }
 }

@@ -32,6 +32,15 @@ object SmVisitor {
     def subs: List[T]
   }
 
+  protected[scalariform] def getTokens[T <: Token](tokens: Tokens)(implicit manifest: Manifest[T]): Seq[T] = {
+    for {
+      t <- tokens
+      if manifest.runtimeClass.isAssignableFrom(t.getClass)
+    } yield {
+      t.asInstanceOf[T]
+    }
+  }
+
   protected[scalariform] def filterTokens[T <: Token](tokens: Tokens, matches: T => Boolean)(implicit manifest: Manifest[T]): Seq[T] = {
     for {
       t <- tokens
@@ -94,9 +103,7 @@ object SmVisitor {
     tree.tokens.sliding(5).map(l => (l(0), l(1), l(2), l(3), l(4))) // scalastyle:ignore magic.number
   }
 
-  def isA[T, U](o: T, cls: Class[U]): Boolean = {
-    o.getClass.isAssignableFrom(cls)
-  }
+  def isA[T, U](o: T, cls: Class[U]): Boolean = cls.isAssignableFrom(o.getClass)
 
   def matchMethod(name: String, paramTypesMatch: List[String] => Boolean)(t: Tree): Boolean = {
     t match {

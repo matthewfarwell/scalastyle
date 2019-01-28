@@ -16,30 +16,22 @@
 
 package org.scalastyle.scalariform
 
-import org.scalastyle.CombinedAst
-import org.scalastyle.CombinedChecker
+import org.scalastyle.CombinedMeta
+import org.scalastyle.CombinedMetaChecker
 import org.scalastyle.LineError
-import org.scalastyle.Lines
 import org.scalastyle.ScalastyleError
-import org.scalastyle.scalariform.VisitorHelper.visit
 
-import _root_.scalariform.lexer.HiddenTokens
-import _root_.scalariform.lexer.NoHiddenTokens
-import _root_.scalariform.lexer.Token
-import _root_.scalariform.lexer.Tokens.CLASS
-import _root_.scalariform.lexer.Tokens
-import _root_.scalariform.parser.AccessModifier
-import _root_.scalariform.parser.AstNode
-import _root_.scalariform.parser.FullDefOrDcl
-import _root_.scalariform.parser.FunDefOrDcl
-import _root_.scalariform.parser.ParamClauses
-import _root_.scalariform.parser.PatDefOrDcl
-import _root_.scalariform.parser.SimpleModifier
-import _root_.scalariform.parser.StatSeq
-import _root_.scalariform.parser.TmplDef
-import _root_.scalariform.parser.Type
-import _root_.scalariform.parser.TypeDefOrDcl
-import _root_.scalariform.parser.TypeParamClause
+import scala.collection.immutable.TreeSet
+import scala.meta.Decl
+import scala.meta.Defn
+import scala.meta.Mod
+import scala.meta.Name
+import scala.meta.Tree
+import scala.meta.contrib.DocToken
+import scala.meta.tokens.Token
+import scala.meta.tokens.Tokens
+
+case class ScalaDocWithTree(comment: Token.Comment, parsed: List[DocToken], tree: Tree, previousWhiteSpace: Int)
 
 /**
   * Checks that the ScalaDoc exists for all accessible members:
@@ -52,7 +44,10 @@ import _root_.scalariform.parser.TypeParamClause
   * the type parameters. Finally, the ScalaDoc must include return description for non-Unit
   * returning methods.
   */
-class ScalaDocChecker extends CombinedChecker {
+class ScalaDocChecker extends CombinedMetaChecker {
+  import ScalaDocChecker._
+  import ScalaDocIndent._ // scalastyle:ignore underscore.import import.grouping
+
   protected val errorKey: String = "scaladoc"
 
   val DefaultIgnoreRegex = "^$"
@@ -65,292 +60,265 @@ class ScalaDocChecker extends CombinedChecker {
   val skipProtected = false
   val skipQualifiedProtected = false
 
-  import ScalaDocChecker._ // scalastyle:ignore underscore.import import.grouping
-
-  override def verify(ast: CombinedAst): List[ScalastyleError] = {
-    val tokens = ast.compilationUnit.tokens
+  override def verify(ast: CombinedMeta): List[ScalastyleError] = {
+    val tokens = ast.tree.tokens
 
     val ignoreRegex = getString("ignoreRegex", DefaultIgnoreRegex)
-    val tokensToIgnore = getString("ignoreTokenTypes", DefaultIgnoreTokenTypes).split(",").filterNot(_.isEmpty).toSet
+    val tokensToIgnore = TreeSet[String]() ++ getString("ignoreTokenTypes", DefaultIgnoreTokenTypes).split(",").filterNot(_.isEmpty).toSet
     val ignoreOverride = getBoolean("ignoreOverride", DefaultIgnoreOverride)
     val indentStyle = getStyleFrom(getString("indentStyle", DefaultIndentStyle))
 
     assertTokensToIgnore(tokensToIgnore)
 
-    val ts = tokens.dropWhile(_.tokenType != CLASS)
-    val ignore = ts.nonEmpty && ts(1).text.matches(ignoreRegex)
-    if (ignore) {
-      Nil
-    } else {
-      localVisit(skip = false, HiddenTokens(Nil), ignoreOverride, indentStyle, ast.lines, tokensToIgnore)(ast.compilationUnit.immediateChildren.head)
+    val allTrees = SmVisitor.getAll[Tree](ast.tree)
+
+    val treesWhichShouldHaveScaladoc = allTrees
+      .filter(scaladocTree(tokensToIgnore))
+      .filterNot(isPrivate)
+      .filterNot(t => ignoreOverride && isOverride(t))
+      .filterNot(matchesRegex(ignoreRegex))
+
+//    println("treesWhichShouldHaveScaladoc=" + treesWhichShouldHaveScaladoc.map(x => x.pos.start + " " + x.getClass).mkString("\n"))
+    val ss = findTokensAndAttachedTree(tokensToIgnore, allTrees, ast.tree.tokens)
+
+    treesWhichShouldHaveScaladoc.flatMap { t =>
+      ss.find(p => p.tree.pos.start == t.pos.start) match {
+        case Some(p) => check(t, p, indentStyle)
+        case None    => List(LineError(t.pos.startLine + 1, List(Missing)))
+      }
     }
   }
 
-  /*
-   * Finds the ScalaDoc hidden in the ``token``, falling back on ``fallback`` if ``token``
-   * contains no ScalaDoc.
-   *
-   * This is useful when including access levels, annotations and such like,
-   * which are not reported as part of the following token. So,
-   *
-   * ```
-   * &#47;**
-   *  * Contains magic
-   *  *&#47;
-   * @magic protected val foo = 5
-   * ```
-   * is interpreted as
-   *
-   * ``FullDefOrDcl`` -> ``PatDefOrDcl``, with the ScalaDoc attached to the ``FulDefOrDcl``, which
-   * finds its way to us here in ``fallback``.
-   */
-  private def findScalaDoc(token: Token, lines: Lines, fallback: HiddenTokens): Option[ScalaDoc] = {
-    def toScalaDoc(ht: HiddenTokens): Option[ScalaDoc] =
-      ht.rawTokens
-        .find(_.isScalaDocComment)
-        .map(commentToken => {
-          val commentOffset = lines.toLineColumn(commentToken.offset).map(_.column).getOrElse(0)
-          ScalaDoc.apply(commentToken, commentOffset)
-        })
+  private def matchesRegex(ignoreRegex: String)(t: Tree): Boolean = enclosingTopLevelName(t).exists(_.matches(ignoreRegex))
 
-    toScalaDoc(token.associatedWhitespaceAndComments).orElse(toScalaDoc(fallback))
+  private def enclosingTopLevelName(t: Tree): Option[String] = {
+    t.parent.flatMap(enclosingTopLevelName).orElse {
+      t match {
+        case f: Defn.Class  => Some(f.name.value)
+        case f: Defn.Object => Some(f.name.value)
+        case _              => None
+      }
+    }
   }
 
-  private def indentErrors(line: Int, style: DocIndentStyle)(scalaDoc: ScalaDoc): List[ScalastyleError] =
-    if (style == AnyDocStyle || style == scalaDoc.indentStyle) {
+  private def scaladocTree(ignoreTokens: Set[String])(t: Tree): Boolean = t match {
+    case d: Defn.Object => !ignoreTokens.contains("TmplDef")
+    case d: Defn.Class  => !ignoreTokens.contains("TmplDef")
+    case d: Defn.Trait  => !ignoreTokens.contains("TmplDef")
+
+    case d: Defn.Def  => !ignoreTokens.contains("FunDefOrDcl")
+    case d: Defn.Var  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Defn.Val  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Defn.Type => !ignoreTokens.contains("TypeDefOrDcl")
+
+    case d: Decl.Def  => !ignoreTokens.contains("FunDefOrDcl")
+    case d: Decl.Var  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Decl.Val  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Decl.Type => !ignoreTokens.contains("TypeDefOrDcl")
+    case _            => false
+  }
+
+  private def check(t: Tree, p: ScalaDocWithTree, indentStyle: DocIndentStyle): List[ScalastyleError] = {
+    val list = p.tree match {
+      case d: Defn.Object => checkObject(d, p)
+      case d: Defn.Class  => checkClass(d, p)
+      case d: Defn.Trait  => checkTrait(d, p)
+
+      case d: Defn.Def  => checkDefnDef(d, p)
+      case d: Defn.Var  => checkDefnVar(d, p)
+      case d: Defn.Val  => checkDefnVal(d, p)
+      case d: Defn.Type => checkDefnType(d, p)
+
+      case d: Decl.Def  => checkDeclDef(d, p)
+      case d: Decl.Var  => checkDeclVar(d, p)
+      case d: Decl.Type => checkDeclType(d, p)
+
+      case _ => Nil
+    }
+
+    list ::: indentErrors(t.pos.startLine + 1, indentStyle, ScalaDocIndent.parse(p.comment, p.previousWhiteSpace))
+  }
+
+  private def extractMods(t: Tree): List[Mod] = {
+    t match {
+      case d: Defn.Object => d.mods
+      case d: Defn.Class  => d.mods
+      case d: Defn.Trait  => d.mods
+
+      case d: Defn.Def  => d.mods
+      case d: Defn.Var  => d.mods
+      case d: Defn.Val  => d.mods
+      case d: Defn.Type => d.mods
+
+      case d: Decl.Def  => d.mods
+      case d: Decl.Var  => d.mods
+      case d: Decl.Val  => d.mods
+      case d: Decl.Type => d.mods
+      case _            => Nil
+    }
+  }
+
+  private def isPrivate(t: Tree): Boolean = extractMods(t).exists(isPrivate)
+  private def isOverride(t: Tree): Boolean = extractMods(t).exists(isOverride)
+
+  private def checkObject(c: Defn.Object, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    // TODO do we need to check the description?
+    Nil
+  }
+
+  private def checkClass(c: Defn.Class, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    val cparams = c.ctor.paramss.flatten.flatMap(p => docParamExists(c, p.name.value, sd.parsed))
+
+    val tparams = c.tparams.flatMap(p => docTparamExists(c, p.name.value, sd.parsed)).headOption.toList
+
+    cparams ::: tparams
+  }
+
+  private def checkTrait(t: Defn.Trait, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    val cparams = t.ctor.paramss.flatten.flatMap(p => docParamExists(t, p.name.value, sd.parsed))
+
+    val tparams = t.tparams.flatMap(p => docTparamExists(t, p.name.value, sd.parsed)).headOption.toList
+
+    cparams ::: tparams
+  }
+
+  private def checkDefnDef(t: Defn.Def, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    val cparams = t.paramss.flatten.flatMap(p => docParamExists(t, p.name.value, sd.parsed))
+
+    val tparams = t.tparams.flatMap(p => docTparamExists(t, p.name.value, sd.parsed)).headOption.toList
+
+    val ret = t.decltpe.flatMap(p => docReturnExists(p, sd.parsed)).toList
+
+    cparams ::: tparams ::: ret
+  }
+
+  private def checkDefnVar(t: Defn.Var, sd: ScalaDocWithTree): List[ScalastyleError] = Nil
+
+  private def checkDefnVal(t: Defn.Val, sd: ScalaDocWithTree): List[ScalastyleError] = Nil
+
+  private def checkDefnType(t: Defn.Type, sd: ScalaDocWithTree): List[ScalastyleError] = Nil
+
+  private def checkDeclDef(t: Decl.Def, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    val cparams = t.paramss.flatten.flatMap(p => docParamExists(t, p.name.value, sd.parsed))
+
+    val tparams = t.tparams.flatMap(p => docTparamExists(t, p.name.value, sd.parsed)).headOption.toList
+
+    val ret = docReturnExists(t.decltpe, sd.parsed).toList
+
+    cparams ::: tparams ::: ret
+  }
+
+  private def checkDeclVar(t: Decl.Var, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    // TODO add these tests in
+    ???
+  }
+
+  private def checkDeclVal(t: Decl.Val, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    // TODO add these tests in
+    ???
+  }
+
+  private def checkDeclType(t: Decl.Type, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    // TODO add these tests in
+    ???
+  }
+
+  private def isPrivate(m: Mod): Boolean = m match {
+    case p: Mod.Private => {
+      p.within match {
+        case i: Name.Indeterminate => false
+        case _                     => true
+      }
+    }
+    case _ => false
+  }
+
+  private def isOverride(m: Mod): Boolean = m match {
+    case p: Mod.Override => true
+    case _               => false
+  }
+
+  private def docParamExists(t: Tree, name: String, tokens: List[DocToken]): Option[ScalastyleError] = {
+    tokens.filter(_.kind == DocToken.Param).find(p => p.name.getOrElse("") == name) match {
+      case None => Some(LineError(t.pos.startLine + 1, List(missingParam(name))))
+      case Some(x) => {
+        val text = x.body.getOrElse("").trim
+        if (text == "" || text.startsWith("@")) Some(LineError(t.pos.startLine + 1, List(emptyParam(name)))) else None
+      }
+    }
+  }
+
+  private def docTparamExists(t: Tree, name: String, tokens: List[DocToken]): Option[ScalastyleError] = {
+    tokens.filter(_.kind == DocToken.TypeParam).find(p => p.name.getOrElse("") == name) match {
+      case None                                       => Some(LineError(t.pos.startLine + 1, List(MalformedTypeParams)))
+      case Some(x) if x.body.getOrElse("").trim == "" => Some(LineError(t.pos.startLine + 1, List(emptyParam(name))))
+      case _                                          => None
+    }
+  }
+
+  private def docReturnExists(t: scala.meta.Type, tokens: List[DocToken]): Option[ScalastyleError] = {
+    if (t.toString == "Unit" || t.toString.trim == "") {
+      None
+    } else {
+      tokens.find(_.kind == DocToken.Return) match {
+        case None                                       => Some(LineError(t.pos.startLine + 1, List(MalformedReturn)))
+        case Some(x) if x.body.getOrElse("").trim == "" => Some(LineError(t.pos.startLine + 1, List(MalformedReturn)))
+        case _                                          => None
+      }
+    }
+  }
+
+  private def findTokensAndAttachedTree(ignoreTokens: Set[String], ast: List[Tree], tokens: scala.meta.tokens.Tokens): Seq[ScalaDocWithTree] = {
+    SmVisitor
+      .getTokens[meta.tokens.Token.Comment](tokens)
+      .filter(c => CommentOps2.isScaladoc(c))
+      .flatMap { c =>
+        for {
+          parsed <- CommentOps2.docTokens(c)
+          t <- findNextNonWhitespaceToken(ignoreTokens, ast, c)
+        } yield {
+          ScalaDocWithTree(c, parsed, t, findNumberOfWhitespaceBefore(tokens, c))
+        }
+      }
+  }
+
+  private def findNumberOfWhitespaceBefore(tokens: Tokens, comment: Token.Comment): Int = {
+    val index = tokens.indexOf(comment)
+    var count = 0
+    for (i <- index - 1 to 0 by -1) {
+      if (!isSpace(tokens(i))) {
+        return count
+      }
+
+      count = count + 1
+    }
+
+    count
+  }
+
+  private def isSpace(t: Token): Boolean = {
+    t match {
+      case t: Token.Space => true
+      case t: Token.Tab   => true
+      case _              => false
+    }
+  }
+
+  private def findNextNonWhitespaceToken(ignoreTokens: Set[String], trees: List[Tree], c: Token.Comment): Option[Tree] = {
+    trees.find(t => scaladocTree(ignoreTokens)(t) && t.pos.start > c.pos.start)
+  }
+
+  private def indentErrors(line: Int, style: DocIndentStyle, scalaDocStyle: DocIndentStyle): List[ScalastyleError] = {
+    if (style == AnyDocStyle || style == scalaDocStyle) {
       Nil
     } else {
       List(LineError(line, List(InvalidDocStyle)))
     }
-
-  // parse the parameters and report errors for the parameters (constructor or method)
-  private def paramErrors(line: Int, paramClausesOpt: Option[ParamClauses])(scalaDoc: ScalaDoc): List[ScalastyleError] = {
-    def params(xs: List[Token]): List[String] = xs match {
-      // @annotation a: B; @annotation(...) a: B
-      case Token(_, "@", _, _) :: Token(_, annotation, _, _) ::
-            Token(_, paramName, _, _) :: Token(_, ":", _, _) :: Token(_, _, _, _) :: t =>
-        paramName :: params(t)
-      // a: B
-      case Token(_, paramName, _, _) :: Token(_, ":", _, _) :: Token(_, _, _, _) :: t => paramName :: params(t)
-      // any other token
-      case _ :: t => params(t)
-      case Nil    => Nil
-    }
-
-    val paramNames = paramClausesOpt.map(pc => params(pc.tokens)).getOrElse(Nil)
-
-    val missingScalaDocParams = paramNames.filterNot(name => scalaDoc.params.exists(_.name == name))
-    val extraScalaDocParams = scalaDoc.params.filterNot(param => paramNames.contains(param.name))
-    val validScalaDocParams = scalaDoc.params.filter(param => paramNames.contains(param.name))
-
-    missingScalaDocParams.map(missing => LineError(line, List(missingParam(missing)))) ++
-      extraScalaDocParams.map(extra => LineError(line, List(extraParam(extra.name)))) ++
-      validScalaDocParams.filter(_.text.isEmpty).map(empty => LineError(line, List(emptyParam(empty.name))))
-
-//      if (!scalaDoc.params.forall(p => paramNames.exists(name => p.name == name && !p.text.isEmpty))) List(LineError(line, List(MalformedParams)))
-//      else Nil
   }
-
-  // parse the type parameters and report errors for the parameters (constructor or method)
-  // scalastyle:off cyclomatic.complexity
-
-  private def tparamErrors(line: Int, tparamClausesOpt: Option[TypeParamClause])(scalaDoc: ScalaDoc): List[ScalastyleError] = {
-    def tparams(xs: List[Token], bracketDepth: Int): List[String] =
-      if (bracketDepth > 1) {
-        //skip nested type params
-        xs match {
-          case Token(Tokens.RBRACKET, _, _, _) :: t => tparams(t, bracketDepth - 1)
-          case _ :: t                               => tparams(t, bracketDepth)
-          case Nil                                  => Nil
-        }
-      } else {
-        xs match {
-          // [... @foo A ...]
-          case Token(Tokens.AT, _, _, _) :: Token(Tokens.VARID, _, _, _) :: Token(Tokens.VARID, paramName, _, _) :: t =>
-            paramName :: tparams(t, bracketDepth)
-          // [... @foo(...) A ...]
-          case Token(Tokens.RPAREN, _, _, _) :: Token(Tokens.VARID, paramName, _, _) :: t =>
-            paramName :: tparams(t, bracketDepth)
-          // [..., A ...]
-          case Token(Tokens.COMMA, _, _, _) :: Token(Tokens.VARID, paramName, _, _) :: t =>
-            paramName :: tparams(t, bracketDepth)
-          // [A ...]
-          case Token(Tokens.LBRACKET, _, _, _) :: Token(Tokens.VARID, paramName, _, _) :: t if bracketDepth == 0 =>
-            paramName :: tparams(t, bracketDepth + 1)
-          // [...]
-          case Token(Tokens.LBRACKET, _, _, _) :: t =>
-            tparams(t, bracketDepth + 1)
-          // any other token
-          case _ :: t => tparams(t, bracketDepth)
-          case Nil    => Nil
-        }
-      }
-
-    val tparamNames = tparamClausesOpt.map(tc => tparams(tc.tokens, 0)).getOrElse(Nil)
-
-    if (tparamNames.size != scalaDoc.typeParams.size) {
-      // bad param sizes
-      List(LineError(line, List(MalformedTypeParams)))
-    } else {
-      if (!scalaDoc.typeParams.forall(tp => tparamNames.contains(tp.name))) {
-        List(LineError(line, List(MalformedTypeParams)))
-      } else {
-        Nil
-      }
-    }
-  }
-  // scalastyle:on cyclomatic.complexity
-
-  // parse the parameters and report errors for the return types
-  private def returnErrors(line: Int, returnTypeOpt: Option[(Token, Type)])(scalaDoc: ScalaDoc): List[ScalastyleError] = {
-    val needsReturn = returnTypeOpt.exists { case (_, tpe) => tpe.firstToken.text != "Unit" }
-
-    if (needsReturn && scalaDoc.returns.isEmpty) {
-      List(LineError(line, List(MalformedReturn)))
-    } else {
-      Nil
-    }
-  }
-
-  /*
-   * process the AST, picking up only the parts that are interesting to us, that is
-   * - access modifiers
-   * - classes, traits, case classes and objects
-   * - methods
-   * - vals, vars and types
-   *
-   * we do not bother descending down any further
-   */
-  // scalastyle:off cyclomatic.complexity
-  private def localVisit(skip: Boolean,
-                         fallback: HiddenTokens,
-                         ignoreOverride: Boolean,
-                         indentStyle: DocIndentStyle,
-                         lines: Lines,
-                         tokensToIgnore: Set[String])(ast: Any): List[ScalastyleError] = {
-
-    def shouldSkip(node: AstNode) = skip || tokensToIgnore.contains(node.getClass.getSimpleName)
-
-    ast match {
-      case t: FullDefOrDcl =>
-        // private, private[xxx], protected, protected[xxx];
-        // check if we are going to include or skip depending on access or override modifiers
-        val skip = t.modifiers.exists {
-          case AccessModifier(pop, Some(_))                                  => if (pop.text == "private") skipQualifiedPrivate else skipQualifiedProtected
-          case AccessModifier(pop, None)                                     => if (pop.text == "private") skipPrivate else skipProtected
-          case SimpleModifier(tk) if ignoreOverride && tk.text == "override" => true
-          case _                                                             => false
-        }
-
-        // pick the ScalaDoc "attached" to the modifier, which actually means
-        // ScalaDoc of the following member
-        val scalaDocs = for {
-          token <- t.tokens
-          comment <- token.associatedWhitespaceAndComments
-          if comment.token.isScalaDocComment
-        } yield comment
-
-        // descend
-        visit(t, localVisit(skip, HiddenTokens(fallback.tokens ++ scalaDocs), ignoreOverride, indentStyle, lines, tokensToIgnore))
-      case t: TmplDef =>
-        // trait Foo, trait Foo[A];
-        // class Foo, class Foo[A](a: A);
-        // case class Foo(), case class Foo[A](a: A);
-        // object Foo;
-        val (_, line) = lines.findLineAndIndex(t.firstToken.offset).get
-
-        // we are checking parameters and type parameters
-        val errors = if (shouldSkip(t)) {
-          Nil
-        } else {
-          findScalaDoc(t.firstToken, lines, fallback)
-            .map { scalaDoc =>
-              paramErrors(line, t.paramClausesOpt)(scalaDoc) ++
-                tparamErrors(line, t.typeParamClauseOpt)(scalaDoc) ++
-                indentErrors(line, indentStyle)(scalaDoc)
-            }
-            .getOrElse(List(LineError(line, List(Missing))))
-        }
-
-        // and we descend, because we're interested in seeing members of the types
-        errors ++ visit(t, localVisit(skip, NoHiddenTokens, ignoreOverride, indentStyle, lines, tokensToIgnore))
-      case t: FunDefOrDcl =>
-        // def foo[A, B](a: Int): B = ...
-        val (_, line) = lines.findLineAndIndex(t.firstToken.offset).get
-
-        // we are checking parameters, type parameters and returns
-        val errors = if (shouldSkip(t)) {
-          Nil
-        } else {
-          findScalaDoc(t.firstToken, lines, fallback)
-            .map { scalaDoc =>
-              paramErrors(line, Some(t.paramClauses))(scalaDoc) ++
-                tparamErrors(line, t.typeParamClauseOpt)(scalaDoc) ++
-                returnErrors(line, t.returnTypeOpt)(scalaDoc) ++
-                indentErrors(line, indentStyle)(scalaDoc)
-            }
-            .getOrElse(List(LineError(line, List(Missing))))
-        }
-
-        // we don't descend any further
-        errors
-      case t: TypeDefOrDcl =>
-        // type Foo = ...
-        val (_, line) = lines.findLineAndIndex(t.firstToken.offset).get
-
-        // no params here
-        val errors =
-          if (shouldSkip(t)) Nil
-          else
-            findScalaDoc(t.firstToken, lines, fallback)
-              .map(scalaDoc => indentErrors(line, indentStyle)(scalaDoc))
-              .getOrElse(List(LineError(line, List(Missing))))
-
-        // we don't descend any further
-        errors
-
-      case t: PatDefOrDcl =>
-        // val a = ..., var a = ...
-        val (_, line) = lines.findLineAndIndex(t.valOrVarToken.offset).get
-        val errors = if (shouldSkip(t)) {
-          Nil
-        } else {
-          findScalaDoc(t.firstToken, lines, fallback).map(scalaDoc => indentErrors(line, indentStyle)(scalaDoc)).getOrElse(List(LineError(line, List(Missing))))
-        }
-
-        // we don't descend any further
-        errors
-
-      case t: StatSeq =>
-        localVisit(skip, fallback, ignoreOverride, indentStyle, lines, tokensToIgnore)(t.firstStatOpt) ++ (
-          for (statOpt <- t.otherStats)
-            yield localVisit(skip, statOpt._1.associatedWhitespaceAndComments, ignoreOverride, indentStyle, lines, tokensToIgnore)(statOpt._2)
-        ).flatten
-
-      case t: Any =>
-        // anything else, we descend (unless we stopped above)
-        visit(t, localVisit(skip, fallback, ignoreOverride, indentStyle, lines, tokensToIgnore))
-    }
-  }
-  // scalastyle:on cyclomatic.complexity
-
-  private def assertTokensToIgnore(tokensToIgnore: Iterable[String]): Unit = {
-    val wrongTokensToIgnore = tokensToIgnore.filterNot(availableTokensToIgnore.contains)
-    if (wrongTokensToIgnore.nonEmpty) {
-      throw new IllegalArgumentException(
-        s"ignoreTokenTypes contained wrong types: $wrongTokensToIgnore, " +
-          s"available types are $availableTokensToIgnore")
-    }
-  }
-
 }
 
-/**
-  * Contains the ScalaDoc model with trivial parsers
-  */
 object ScalaDocChecker {
-  private val availableTokensToIgnore = Set(classOf[PatDefOrDcl], classOf[TypeDefOrDcl], classOf[FunDefOrDcl], classOf[TmplDef])
-    .map(_.getSimpleName)
+  private val availableTokensToIgnore = TreeSet("PatDefOrDcl", "TypeDefOrDcl", "FunDefOrDcl", "TmplDef")
 
   val Missing = "Missing"
   def missingParam(name: String): String = "Missing @param " + name
@@ -360,6 +328,20 @@ object ScalaDocChecker {
   val MalformedReturn = "Malformed @return"
   val InvalidDocStyle = "Invalid doc style"
 
+  def assertTokensToIgnore(tokensToIgnore: Set[String]): Unit = {
+    val wrongTokensToIgnore = tokensToIgnore.diff(availableTokensToIgnore)
+    if (wrongTokensToIgnore.nonEmpty) {
+      throw new IllegalArgumentException(
+        s"ignoreTokenTypes contained wrong types: ${wrongTokensToIgnore.toList.sorted}, " +
+          s"available types are $availableTokensToIgnore")
+    }
+  }
+}
+
+/**
+  * Contains the ScalaDoc model with trivial parsers
+  */
+object ScalaDocIndent {
   sealed trait DocIndentStyle
   object ScalaDocStyle extends DocIndentStyle
   object JavaDocStyle extends DocIndentStyle
@@ -374,100 +356,31 @@ object ScalaDocChecker {
   }
 
   /**
-    * Companion for the ScalaDoc object that parses its text to pick up its elements
+    * Take the ``raw`` and parse an instance of ``ScalaDoc``
+    * @param comment the token containing the scaladoc
+    * @param previousWhitespace column number of scaladoc's first string
+    * @return the parsed instance
     */
-  private object ScalaDoc {
-    private val TagRegex = """\W*[*]\W+\@(\w+)\W+(\w+)(.*)""".r
+  def parse(comment: Token.Comment, previousWhitespace: Int): DocIndentStyle = {
+    val strings = comment.text.split("\\n").toList
 
-    sealed trait ScalaDocLine {
-      def isTag: Boolean
-    }
-    case class TagSclaDocLine(tag: String, ref: String, rest: String) extends ScalaDocLine {
-      def isTag: Boolean = true
-    }
-    case class RawScalaDocLine(text: String) extends ScalaDocLine {
-      def isTag: Boolean = false
-      override val toString: String = text.replaceFirst("\\*\\W+", "")
-    }
-
-    /**
-      * Take the ``raw`` and parse an instance of ``ScalaDoc``
-      * @param raw the token containing the ScalaDoc
-      * @param offset column number of scaladoc's first string
-      * @return the parsed instance
-      */
-    // scalastyle:off cyclomatic.complexity
-    def apply(raw: Token, offset: Int): ScalaDoc = {
-      val strings = raw.rawText.split("\\n").toList
-
-      val indentStyle = {
-        def getStyle(xs: List[String], style: DocIndentStyle): DocIndentStyle = xs match {
-          case x :: tail =>
-            val prefixSizeDiff = if (x.trim.head == '*') x.substring(0, x.indexOf("*")).length - offset else -1
-            val lineStyle = prefixSizeDiff match {
-              case 1 => JavaDocStyle
-              case 2 => ScalaDocStyle
-              case _ => AnyDocStyle
-            }
-            style match {
-              case ScalaDocStyle | JavaDocStyle =>
-                if (lineStyle == style) getStyle(tail, style) else AnyDocStyle
-              case AnyDocStyle =>
-                AnyDocStyle
-              case UndefinedDocStyle =>
-                getStyle(tail, lineStyle)
-            }
-          case Nil => if (style == UndefinedDocStyle) AnyDocStyle else style
-        }
-
-        getStyle(strings.tail, UndefinedDocStyle)
-      }
-
-      val lines = strings.flatMap(x =>
-        x.trim match {
-          case TagRegex(tag, ref, rest) => Some(TagSclaDocLine(tag, ref, rest))
-          case "/**"                    => None
-          case "*/"                     => None
-          case text: Any                => Some(RawScalaDocLine(text))
-      })
-
-      def combineScalaDocFor[A](lines: List[ScalaDocLine], tag: String, f: (String, String) => A): List[A] = lines match {
-        case TagSclaDocLine(`tag`, ref, text) :: ls =>
-          val rawLines = ls.takeWhile(!_.isTag)
-          f(ref, text + rawLines.mkString(" ")) :: combineScalaDocFor(ls.drop(rawLines.length), tag, f)
-        case _ :: ls => combineScalaDocFor(ls, tag, f)
-        case Nil     => Nil
-      }
-
-      val params = combineScalaDocFor(lines, "param", ScalaDocParameter)
-      val typeParams = combineScalaDocFor(lines, "tparam", ScalaDocParameter)
-      val returns = combineScalaDocFor(lines, "return", _ + _).headOption
-
-      ScalaDoc(raw.rawText, params, typeParams, returns, None, indentStyle)
-    }
-    // scalastyle:on cyclomatic.complexity
+    getStyle(strings.tail, UndefinedDocStyle, previousWhitespace)
   }
 
-  /**
-    * Models a parameter: either plain or type
-    * @param name the parameter name
-    * @param text the parameter text
-    */
-  private case class ScalaDocParameter(name: String, text: String)
-
-  /**
-    * Models the parsed ScalaDoc
-    * @param text arbitrary text
-    * @param params the parameters
-    * @param typeParams the type parameters
-    * @param returns the returns clause, if present
-    * @param throws the throws clause, if present
-    * @param indentStyle doc indent style
-    */
-  private case class ScalaDoc(text: String,
-                              params: List[ScalaDocParameter],
-                              typeParams: List[ScalaDocParameter],
-                              returns: Option[String],
-                              throws: Option[String],
-                              indentStyle: DocIndentStyle)
+  // scalastyle:off cyclomatic.complexity
+  def getStyle(xs: List[String], style: DocIndentStyle, previousWhitespace: Int): DocIndentStyle = xs match {
+    case x :: tail =>
+      val prefixSizeDiff = if (x.trim.head == '*') x.substring(0, x.indexOf("*")).length - previousWhitespace else -1
+      val lineStyle = prefixSizeDiff match {
+        case 1 => JavaDocStyle
+        case 2 => ScalaDocStyle
+        case _ => AnyDocStyle
+      }
+      style match {
+        case ScalaDocStyle | JavaDocStyle => if (lineStyle == style) getStyle(tail, style, previousWhitespace) else AnyDocStyle
+        case AnyDocStyle                  => AnyDocStyle
+        case UndefinedDocStyle            => getStyle(tail, lineStyle, previousWhitespace)
+      }
+    case Nil => if (style == UndefinedDocStyle) AnyDocStyle else style
+  }
 }
