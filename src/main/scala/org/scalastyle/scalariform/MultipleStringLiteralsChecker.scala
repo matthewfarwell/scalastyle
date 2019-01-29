@@ -30,14 +30,22 @@ class MultipleStringLiteralsChecker extends ScalametaChecker {
   private val DefaultIgnoreRegex = "^\"\"$"
   val errorKey = "multiple.string.literals"
 
+  private val escapeMap = Map(
+    '\b' -> "\\b",
+    '\t' -> "\\t",
+    '\n' -> "\\n",
+    '\f' -> "\\f",
+    '\r' -> "\\r"
+  )
+
   def verify(ast: Tree): List[ScalastyleError] = {
     val allowed = getInt("allowed", DefaultAllowed)
-    val ignoreRegex = getString("ignoreRegex", DefaultIgnoreRegex).r
+    val ignoreRegex = getString("ignoreRegex", DefaultIgnoreRegex).replaceAllLiterally("^\"\"$", "^$").r
 
     val interpolates = SmVisitor.getAll[Term.Interpolate](ast)
     val stringsUnderInterpolates: List[Lit.String] = interpolates.flatMap(i => SmVisitor.getAll[Lit.String](i))
 
-    val strings: List[Lit.String] = SmVisitor.getAll[Lit.String](ast)
+    val strings: List[Lit.String] = SmVisitor.getAll[Lit.String](ast).filterNot(parentIsXml)
 
     val stringsWithoutInterpolateStrings: Seq[Lit.String] = strings.filterNot(s => positionExistsIn(stringsUnderInterpolates, s.pos))
 
@@ -47,9 +55,28 @@ class MultipleStringLiteralsChecker extends ScalametaChecker {
       (s, list) <- both.groupBy(s => value(s))
       if !matches(s, ignoreRegex)
       if list.size  > allowed
-    } yield toError(list.head, List(s, "" + list.size, "" + allowed))
+    } yield toError(list.head, List(escape(s), "" + list.size, "" + allowed))
 
     seq.toList.sortBy(_.line)
+  }
+
+  private def escape(s: String): String = {
+    val b = new StringBuilder
+
+    for (c <- s.toCharArray) {
+      escapeMap.get(c) match {
+        case Some(escape) => b.append(escape)
+        case None => {
+          if (c >= 128 || c < 32) { // scalastyle:ignore magic.number
+            b.append("\\u").append(f"${c.toInt}%04X")
+          } else {
+            b.append(c)
+          }
+        }
+      }
+    }
+
+    b.toString
   }
 
   private def value(t: Tree) = t match {
@@ -62,5 +89,16 @@ class MultipleStringLiteralsChecker extends ScalametaChecker {
 
   private def samePosition(p1: Position, p2: Position): Boolean = p1.start == p2.start && p1.end == p2.end
 
-  private def matches(s: String, regex: Regex) = (regex findAllIn (s)).size == 1
+  private def matches(s: String, regex: Regex) = regex.findAllIn(s).size == 1
+
+  // XML literals are parsed to a set of literals, we should ignore them
+  private def parentIsXml(t: Tree): Boolean = {
+    t.parent match {
+      case None => false
+      case Some(x) => x match {
+        case _: Term.Xml => true
+        case _ => false
+      }
+    }
+  }
 }

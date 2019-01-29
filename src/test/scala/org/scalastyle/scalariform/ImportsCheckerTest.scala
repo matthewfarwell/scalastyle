@@ -176,6 +176,17 @@ object Barbar {
     assertErrors(List(columnError(9, 2), columnError(12, 0), columnError(15, 2)), source)
   }
 
+  @Test def testOKNoPackageStartsFromFirstChar(): Unit = {
+    val source = """import java.util.List;
+import java.util._
+
+object Barbar {
+}
+"""
+
+    assertErrors(List(), source)
+  }
+
 
   @Test def testNone(): Unit = {
     val source = """

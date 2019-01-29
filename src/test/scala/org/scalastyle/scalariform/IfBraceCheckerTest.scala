@@ -48,6 +48,20 @@ class Foobar {
     assertErrors(List(columnError(6, 13)), source)
   }
 
+  @Test def testDefaultNoElse(): Unit = {
+    val source = """
+package foobar
+
+class Foobar {
+  if (position >= l.start && position < l.end) {
+     println("something")
+  }
+}
+"""
+
+    assertErrors(List(), source)
+  }
+
   @Test def testDefault2(): Unit = {
     val source = """
 package foobar

@@ -123,7 +123,7 @@ class CheckerUtils(classLoader: Option[ClassLoader] = None) {
     } else {
       val lines = Checker.parseLines(source)
       lazy val scalariformAst = parseScalariform(source)
-      lazy val scalametaTree = parseScalameta(source)
+      lazy val scalametaTree = parseScalameta(source.replaceAllLiterally("\r", ""))
 
       val commentFilters = if (configuration.commentFilter) {
         CommentFilter.findCommentFilters(scalariformAst.comments, lines)
@@ -131,14 +131,28 @@ class CheckerUtils(classLoader: Option[ClassLoader] = None) {
         Nil
       }
 
-      classes.flatMap(cc => newInstance(cc.className, cc.level, cc.parameters, cc.customMessage, cc.customId)).flatMap(c => c match {
-        case c: FileChecker => c.verify(file, c.level, lines, lines)
-        case c: ScalariformChecker => c.verify(file, c.level, scalariformAst.ast, lines)
-        case c: CombinedChecker => c.verify(file, c.level, CombinedAst(scalariformAst.ast, lines), lines)
-        case c: ScalametaChecker => c.verify(file, c.level, scalametaTree, lines)
+      classes
+        .flatMap(cc => newInstance(cc.className, cc.level, cc.parameters, cc.customMessage, cc.customId))
+        .flatMap(c => execute(file, c, lines, scalariformAst, scalametaTree))
+        .filter(m => CommentFilter.filterApplies(m, commentFilters))
+    }
+  }
+
+  private def execute[T <: FileSpec](file: T, c: Checker[_], lines: Lines, scalariformAst: ScalariformAst, scalametaTree: Tree): Seq[Message[T]] = {
+    try {
+      c match {
+        case c: FileChecker         => c.verify(file, c.level, lines, lines)
+        case c: ScalariformChecker  => c.verify(file, c.level, scalariformAst.ast, lines)
+        case c: CombinedChecker     => c.verify(file, c.level, CombinedAst(scalariformAst.ast, lines), lines)
+        case c: ScalametaChecker    => c.verify(file, c.level, scalametaTree, lines)
         case c: CombinedMetaChecker => c.verify(file, c.level, CombinedMeta(scalametaTree, lines), lines)
-        case _ => Nil
-      }).filter(m => CommentFilter.filterApplies(m, commentFilters))
+        case _                      => Nil
+      }
+    } catch {
+      case e: Exception => {
+        e.printStackTrace(System.out)
+        List(StyleException(file: T, None, message = c.getClass.getName + ":" + e.getMessage, stacktrace = e.getStackTrace.mkString("", "\n", "\n")))
+      }
     }
   }
 

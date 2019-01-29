@@ -62,6 +62,7 @@ class B(
   @Test def forExpression(): Unit = {
     val source =
 """
+object Foo {
 val id = 50
 for {
   a <- findA(id)
@@ -69,6 +70,7 @@ for {
   c <- b.cs
   if c.isEven
 } yield c
+}
 """
 
     assertErrors(Nil, source)
@@ -77,6 +79,7 @@ for {
   @Test def dsl(): Unit = {
     val source =
 """
+  |object Foo {
   |val id = 123
   |val (m, g) = (GroupMember.syntax("m"), Group.syntax("g"))
   |val groupMember = withSQL {
@@ -86,6 +89,7 @@ for {
   |    .on(m.groupId, g.id)
   |    .where.eq(m.id, id)
   |}.map(GroupMember(m, g)).single.apply()
+  |}
 """.stripMargin
 
     assertErrors(Nil, source)

@@ -39,14 +39,18 @@ abstract class OK {
   def unit2 {}
   def unit3
   def unit4: Unit
-  def unit5(i: Int) = {}
-  def unit6(i: Int) {}
+  def unit5(i: Int) =  {}
+  def unit6(i: Int)  {}
   def unit7(i: Int)
   def unit8(i: Int): Unit
   val foo: Unit = new scala.collection.mutable.HashMap {def foobar() = {}}
   def bar() = { new scala.collection.mutable.HashMap {def foobar() = {}} }
   def bar2() = new scala.collection.mutable.HashMap {def foobar2() = {}}
   val bar3 = ""
+  def toLineColumn(position: Int): Option[LineColumn] =
+    findLineAndIndex(position) map {case (line, index) => LineColumn(index, position - line.start)}
+  def doc(proc: Boolean) = // comments & a new line
+    "foobar"
 }
 """
 

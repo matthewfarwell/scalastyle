@@ -38,7 +38,7 @@ class CyclomaticComplexityChecker extends CombinedMetaChecker {
 
   def verify(ast: CombinedMeta): List[ScalastyleError] = {
     val it = for {
-      t <- localvisit(ast.tree.children.head)
+      t <- localvisit(ast.tree)
       f <- traverse(t)
       value = matches(f, ast.lines, maximum)
       if value > maximum

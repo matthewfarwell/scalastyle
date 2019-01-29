@@ -49,7 +49,46 @@ class Foobar {
 """
 
     assertErrors(List(columnError(5, 10, List("foobar", "7", "3")), columnError(12, 11, List("bar", "4", "3"))), source,
-                    Map("allowed" -> "3", "ignoreRegex" -> "1"))
+      Map("allowed" -> "3", "ignoreRegex" -> "1"))
+  }
+
+  @Test def testEscapedCharacters(): Unit = {
+    val source = """
+package foobar
+
+class Foobar {
+  var a = "\n"
+  var b = "\n"
+  var c = "\n"
+  val d = "\n"
+  def e = "\n"
+  def f(f: String = "\n") = 5
+
+  var a1 = "\f"
+  val d1 = "\f"
+  def e1 = "\f"
+  def f1(f: String = "\f") = "foobar"
+
+  val a2 = "1"
+  val b2 = "1"
+}
+"""
+
+    assertErrors(List(columnError(5, 10, List("\\n", "6", "3")), columnError(12, 11, List("\\f", "4", "3"))), source,
+      Map("allowed" -> "3", "ignoreRegex" -> "1"))
+  }
+
+  @Test def testXmlShouldNeverMatch(): Unit = {
+    val source = """
+package foobar
+
+class Foobar {
+  val check = <check class={c.className} level={c.level.name} enabled={if (c.enabled) True else False}>{customMessage}{parameters}</check>
+}
+"""
+
+    // XML literals are parsed to a set of literals, we should ignore them
+    assertErrors(List(), source, Map("allowed" -> "0"))
   }
 
   @Test def testParametersStringInterpolation(): Unit = {
@@ -98,10 +137,12 @@ class Foobar {
 
   var a2 = ""
   var b2 = ""
+  var b3 = ""
+  var b4 = ""
 }
 """
 
-    assertErrors(List(columnError(5, 10, List("foobar", "2", "1")), columnError(10, 11, List("", "2", "1"))), source)
+    assertErrors(List(columnError(5, 10, List("foobar", "2", "1"))), source)
   }
 
   @Test def testMultiLine(): Unit = {
@@ -116,8 +157,7 @@ class Foobar {
 }
 """.replace("###", "\"\"\"")
 
-    assertErrors(List(columnError(5, 10, List("""foobar
-  oop""", "2", "1"))), source)
+    assertErrors(List(columnError(5, 10, List("""foobar\n  oop""", "2", "1"))), source)
   }
 
   @Test def testMultiLineAndNormal(): Unit = {

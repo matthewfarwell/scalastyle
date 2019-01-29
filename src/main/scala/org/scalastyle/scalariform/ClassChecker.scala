@@ -16,25 +16,43 @@
 
 package org.scalastyle.scalariform
 
+import org.scalastyle.ScalametaChecker
+import org.scalastyle.ScalastyleError
+
 import scala.meta.Defn
+import scala.meta.Tree
 import scala.meta.Type
 import scala.util.matching.Regex
 
-class EmptyClassChecker extends AbstractClassChecker {
+class EmptyClassChecker extends ScalametaChecker {
   val errorKey = "empty.class"
 
-  def matches(t: Defn.Class): Boolean = t.templ.stats.isEmpty && t.templ.tokens.length > 0
-  def matches(t: Defn.Trait): Boolean = t.templ.stats.isEmpty && t.templ.tokens.length > 0
+  final def verify(ast: Tree): List[ScalastyleError] = {
+    val classErrors = SmVisitor.getAll[Defn.Class](ast).filter(matches).map(_.name)
+    val traitErrors = SmVisitor.getAll[Defn.Trait](ast).filter(matches).map(_.name)
+
+    (classErrors ::: traitErrors).map(toError)
+  }
+
+  private def matches(t: Defn.Class): Boolean = t.templ.stats.isEmpty && t.templ.toString().startsWith("{")
+  private def matches(t: Defn.Trait): Boolean = t.templ.stats.isEmpty && t.templ.toString().startsWith("{")
 }
 
-class ClassTypeParameterChecker extends AbstractClassChecker {
+class ClassTypeParameterChecker extends ScalametaChecker {
   val DefaultRegex = "^[A-Z_]$"
   val errorKey = "class.type.parameter.name"
 
-  private[this] def matches(t: Type.Param): Boolean = {
+  final def verify(ast: Tree): List[ScalastyleError] = {
     val regexString = getString("regex", DefaultRegex)
     val regex = regexString.r
 
+    val classErrors = SmVisitor.getAll[Defn.Class](ast).filter(matchesClass(regex)).map(_.name)
+    val traitErrors = SmVisitor.getAll[Defn.Trait](ast).filter(matchesTrait(regex)).map(_.name)
+
+    (classErrors ::: traitErrors).map(e => toError(e, List(regexString)))
+  }
+
+  private[this] def matchesType(regex: Regex)(t: Type.Param): Boolean = {
     innermostNames(t).exists(s => !matchesRegex(regex, s))
   }
 
@@ -48,7 +66,7 @@ class ClassTypeParameterChecker extends AbstractClassChecker {
     }
   }
 
-  def matches(t: Defn.Class): Boolean = t.tparams.exists(matches)
-  def matches(t: Defn.Trait): Boolean = t.tparams.exists(matches)
+  private def matchesClass(regex: Regex)(t: Defn.Class): Boolean = t.tparams.exists(matchesType(regex))
+  private def matchesTrait(regex: Regex)(t: Defn.Trait): Boolean = t.tparams.exists(matchesType(regex))
 
 }

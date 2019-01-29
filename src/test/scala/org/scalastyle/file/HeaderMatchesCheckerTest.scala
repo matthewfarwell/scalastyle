@@ -78,13 +78,13 @@ class HeaderMatchesCheckerTest extends AssertionsForJUnit with CheckerTest {
   }
 
   @Test def testTooShort(): Unit = {
-    val shortSourceLines = licenseLines.take(4)
+    val shortSourceLines = licenseLines.take(4) ++ List(" */")
     val shortSourceUnix = shortSourceLines.mkString("\n")
     val shortSourceWin = shortSourceLines.mkString("\r\n")
-    assertErrors(List(lineError(4)), shortSourceUnix, Map("header" -> licenseUnix))
-    assertErrors(List(lineError(4)), shortSourceWin, Map("header" -> licenseWin))
-    assertErrors(List(lineError(4)), shortSourceUnix, Map("header" -> licenseWin))
-    assertErrors(List(lineError(4)), shortSourceWin, Map("header" -> licenseUnix))
+    assertErrors(List(lineError(5)), shortSourceUnix, Map("header" -> licenseUnix))
+    assertErrors(List(lineError(5)), shortSourceWin, Map("header" -> licenseWin))
+    assertErrors(List(lineError(5)), shortSourceUnix, Map("header" -> licenseWin))
+    assertErrors(List(lineError(5)), shortSourceWin, Map("header" -> licenseUnix))
   }
 
   def literalOK(c: Char): Boolean = c match {

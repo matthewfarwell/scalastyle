@@ -22,6 +22,7 @@ import org.scalastyle.Lines
 import org.scalastyle.ScalastyleError
 import org.scalastyle.scalariform.SmVisitor.TreeVisit
 
+import scala.meta.Lit
 import scala.meta.Term
 
 class IfBraceChecker extends CombinedMetaChecker {
@@ -58,6 +59,7 @@ class IfBraceChecker extends CombinedMetaChecker {
     val ifHasBrace = hasBrace(t.t.thenp)
 
     val (elseLine: Option[Int], elseHasBrace) = t.t.elsep match {
+      case l: Lit.Unit => (None, true)
       case t: Term => (Some(t.pos.startLine), hasBrace(t))
       case _       => (None, true)
     }
@@ -66,7 +68,7 @@ class IfBraceChecker extends CombinedMetaChecker {
       false
     } else {
       elseLine match {
-        case None => if (singleLineAllowed) !sameLine(ifLine, Some(ifThenLine)) else true
+        case None => if (singleLineAllowed) !sameLine(ifLine, Some(ifThenLine)) else false
         case Some(y) => {
           if (!sameLine(ifLine, Some(ifThenLine)) || !sameLine(y, elseLine)) {
             true

@@ -132,6 +132,8 @@ class ImportGroupingChecker extends CombinedMetaChecker {
       case _: Token.Space     => true
       case _: Token.Comment   => true
       case _: Token.FF        => true
+      case _: Token.BOF       => true
+      case _: Token.EOF       => true
       case _: Token.Tab       => true
       case _: Token.Semicolon => true
       case _                  => false

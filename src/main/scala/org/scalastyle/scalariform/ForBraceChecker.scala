@@ -50,8 +50,13 @@ class ForBraceChecker extends CombinedMetaChecker {
     case _                => false
   }
 
+  private def isLeftParen(t: Token): Boolean = t match {
+    case t: Token.LeftParen => true
+    case _                  => false
+  }
+
   private def hasBrace(ts: Tokens): Option[Token] = {
-    ts.dropWhile(toIgnore).headOption.filterNot(t => SmVisitor.isA(t, classOf[Token.LeftBrace]))
+    ts.dropWhile(isLeftParen).dropWhile(toIgnore).headOption.filterNot(t => SmVisitor.isA(t, classOf[Token.LeftBrace]))
   }
 
   private def validSingleLine(t: Term.ForYield, lines: Lines): Boolean = {

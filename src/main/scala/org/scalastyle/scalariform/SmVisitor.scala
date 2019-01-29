@@ -141,7 +141,7 @@ object SmVisitor {
     endLine - startLine - minus - 1 //  don't count first line
   }
 
-  private def onlyCommentsAndSpace(t: Token): Boolean = t match {
+  def onlyCommentsAndSpace(t: Token): Boolean = t match {
     case t: Token.Comment => true
     case t: Token.Space => true
     case t: Token.LF => true

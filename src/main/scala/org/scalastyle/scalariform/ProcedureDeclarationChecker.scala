@@ -27,19 +27,20 @@ class ProcedureDeclarationChecker extends AbstractSingleMethodChecker[Unit] {
 
   protected def matches(t: FullDefOrDclVisit, p: Unit): Boolean = {
     t match {
-      case d: DefnDefVisit => !isEqualsBeforeBody(d.defnDef.body)
-      case d: DeclDefVisit => {
-        d.declDef.decltpe match {
-          case t: Type.Name => t.toString == ""
-          case _ => false
-        }
+      case d: DefnDefVisit => isEmptyType(d.defnDef.decltpe) && !isEqualsBeforeBody(d.defnDef.body)
+      case d: DeclDefVisit => d.declDef.decltpe match {
+        case t: Type.Name => isEmptyType(t)
+        case _ => false
       }
     }
   }
 
+  private def isEmptyType(t: Type): Boolean = t.toString == ""
+  private def isEmptyType(t: Option[Type]): Boolean = t.map(isEmptyType).getOrElse(true)
+
   private def isEqualsBeforeBody(body: Tree): Boolean = {
     var start = body.tokens.start - 1
-    while (SmVisitor.isA(body.tokens.tokens(start), classOf[Token.Space])) {
+    while (SmVisitor.onlyCommentsAndSpace(body.tokens.tokens(start))) {
       start = start -1
     }
 

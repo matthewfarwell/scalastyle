@@ -42,6 +42,7 @@ class Foobar6 {
   def foobar() = 4
 }
 class Foobar7
+trait FileChecker extends Checker[Lines]
 """
 
     assertErrors(List(columnError(4, 6), columnError(5, 6), columnError(6, 6), columnError(9, 6), columnError(10, 6)), source)
@@ -62,6 +63,18 @@ class Outer {
 
     assertErrors(List(columnError(6, 8), columnError(7, 8)), source)
   }
+
+  @Test def testParsingError(): Unit = {
+    val source = """package com.nexthink.license.utils
+                   |
+                   |trait ItTests
+                   |
+                   |case class LicenseFile(lr: LicenseRequest, licenseFile: String)
+                   |""".stripMargin
+    assertErrors(List(), source)
+  }
+
+
 }
 
 class ClassTypeParameterCheckerTest extends AssertionsForJUnit with CheckerTest {
@@ -88,7 +101,14 @@ class Foobar9[Foo <: Any]
 class Foobar0[+Foo]
 class Foobar10[Foo[Bar, Baz]]
 """
-    assertErrors(List(columnError(6, 6), columnError(14, 6), columnError(15, 6), columnError(16, 6), columnError(17, 6), columnError(18, 6)), source, Map("regex" -> "^[A-Z]$"))
+    assertErrors(List(
+      columnError(6, 6, List("^[A-Z]$")),
+      columnError(14, 6, List("^[A-Z]$")),
+      columnError(15, 6, List("^[A-Z]$")),
+      columnError(16, 6, List("^[A-Z]$")),
+      columnError(17, 6, List("^[A-Z]$")),
+      columnError(18, 6, List("^[A-Z]$"))),
+      source, Map("regex" -> "^[A-Z]$"))
   }
 
   @Test def testTrait(): Unit = {
@@ -111,7 +131,14 @@ trait Foobar9[Foo <: Any]
 trait Foobar0[+Foo]
 trait Foobar10[Foo[Bar, Baz]]
 """
-    assertErrors(List(columnError(6, 6), columnError(14, 6), columnError(15, 6), columnError(16, 6), columnError(17, 6), columnError(18, 6)), source, Map("regex" -> "^[A-Z]$"))
+    assertErrors(List(
+      columnError(6, 6, List("^[A-Z]$")),
+      columnError(14, 6, List("^[A-Z]$")),
+      columnError(15, 6, List("^[A-Z]$")),
+      columnError(16, 6, List("^[A-Z]$")),
+      columnError(17, 6, List("^[A-Z]$")),
+      columnError(18, 6, List("^[A-Z]$"))),
+      source, Map("regex" -> "^[A-Z]$"))
   }
 
   @Test def testRegex(): Unit = {
@@ -123,7 +150,10 @@ trait Foobar2[T]
 trait Foobar3[Bar]
 trait Foobar4[Foo[Baz, Bar]]
 """
-    assertErrors(List(columnError(5, 6), columnError(7, 6)), source, Map("regex" -> "^Bar.*$"))
+    assertErrors(List(
+      columnError(5, 6, List("^Bar.*$")),
+      columnError(7, 6, List("^Bar.*$"))),
+      source, Map("regex" -> "^Bar.*$"))
   }
 
 }
