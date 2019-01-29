@@ -25,8 +25,6 @@ import scala.meta.Member
 import scala.meta.Tree
 
 abstract class AbstractClassChecker extends ScalametaChecker {
-  case class TmplClazz(t: Member.Type, subs: List[TmplClazz]) extends TreeVisit[TmplClazz]
-
   final def verify(ast: Tree): List[ScalastyleError] = {
 
     val classErrors = SmVisitor.getAll[Defn.Class](ast).filter(matches).map(_.name)

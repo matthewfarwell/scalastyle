@@ -39,7 +39,7 @@ abstract class AbstractImportChecker extends CombinedMetaChecker {
     SmVisitor.getAll[Import](ast.tree).filter(matches).map(toError)
   }
 
-  protected def init(): Unit = {}
+  protected def init(): Unit
 
   def matches(t: Import): Boolean
 }
@@ -127,13 +127,13 @@ class ImportGroupingChecker extends CombinedMetaChecker {
 
   private def isSpace(t: Token): Boolean = {
     t match {
-      case t: Token.CR        => true
-      case t: Token.LF        => true
-      case t: Token.Space     => true
-      case t: Token.Comment   => true
-      case t: Token.FF        => true
-      case t: Token.Tab       => true
-      case t: Token.Semicolon => true
+      case _: Token.CR        => true
+      case _: Token.LF        => true
+      case _: Token.Space     => true
+      case _: Token.Comment   => true
+      case _: Token.FF        => true
+      case _: Token.Tab       => true
+      case _: Token.Semicolon => true
       case _                  => false
     }
   }

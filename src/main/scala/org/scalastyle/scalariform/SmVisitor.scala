@@ -49,19 +49,10 @@ object SmVisitor {
     } yield t.asInstanceOf[T]
   }
 
-  protected[scalariform] def traverse[T <: TreeVisit[T]](t: T, matches: T => Boolean): List[T] = {
-    val l = t.subs.flatMap(traverse(_, matches))
-    if (matches(t)) t :: l else l
-  }
-
   protected[scalariform] def getAll[T <: Tree](ast: Tree)(implicit manifest: Manifest[T]): List[T] = {
     def fn(t: T): List[T] = List[T](t)
 
     visit0[T, T](manifest.runtimeClass.asInstanceOf[Class[T]], fn)(ast)
-  }
-
-  protected[scalariform] def visit[T <: Tree, X](fn: T => List[X])(ast: Any)(implicit manifest: Manifest[T]): List[X] = {
-    visit0[T, X](manifest.runtimeClass.asInstanceOf[Class[T]], fn)(ast)
   }
 
   private[this] def visit0[T <: Tree, X](clazz: Class[T], fn: T => List[X])(ast: Any): List[X] = {
@@ -85,10 +76,6 @@ object SmVisitor {
       case (x, y, z)                 => visitfn(x) ::: visitfn(y) ::: visitfn(z)
       case true | false | Nil | None => List()
     }
-  }
-
-  def charsBetweenTokens(left: Token, right: Token): Int = {
-    right.start - left.end
   }
 
   def sliding2(tree: Tree)(implicit dialect: Dialect): Iterator[(Token, Token)] = {
@@ -162,6 +149,4 @@ object SmVisitor {
     case t: Token.CR => true
     case _ => false
   }
-
-
 }

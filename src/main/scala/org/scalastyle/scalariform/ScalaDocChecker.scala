@@ -45,20 +45,15 @@ case class ScalaDocWithTree(comment: Token.Comment, parsed: List[DocToken], tree
   * returning methods.
   */
 class ScalaDocChecker extends CombinedMetaChecker {
-  import ScalaDocChecker._
+  import ScalaDocChecker._ // scalastyle:ignore underscore.import import.grouping
   import ScalaDocIndent._ // scalastyle:ignore underscore.import import.grouping
 
   protected val errorKey: String = "scaladoc"
 
-  val DefaultIgnoreRegex = "^$"
-  val DefaultIgnoreTokenTypes = ""
-  val DefaultIgnoreOverride = false
-  val DefaultIndentStyle = ""
-
-  val skipPrivate = true
-  val skipQualifiedPrivate = false
-  val skipProtected = false
-  val skipQualifiedProtected = false
+  private val DefaultIgnoreRegex = "^$"
+  private val DefaultIgnoreTokenTypes = ""
+  private val DefaultIgnoreOverride = false
+  private val DefaultIndentStyle = ""
 
   override def verify(ast: CombinedMeta): List[ScalastyleError] = {
     val tokens = ast.tree.tokens
@@ -101,23 +96,6 @@ class ScalaDocChecker extends CombinedMetaChecker {
     }
   }
 
-  private def scaladocTree(ignoreTokens: Set[String])(t: Tree): Boolean = t match {
-    case d: Defn.Object => !ignoreTokens.contains("TmplDef")
-    case d: Defn.Class  => !ignoreTokens.contains("TmplDef")
-    case d: Defn.Trait  => !ignoreTokens.contains("TmplDef")
-
-    case d: Defn.Def  => !ignoreTokens.contains("FunDefOrDcl")
-    case d: Defn.Var  => !ignoreTokens.contains("PatDefOrDcl")
-    case d: Defn.Val  => !ignoreTokens.contains("PatDefOrDcl")
-    case d: Defn.Type => !ignoreTokens.contains("TypeDefOrDcl")
-
-    case d: Decl.Def  => !ignoreTokens.contains("FunDefOrDcl")
-    case d: Decl.Var  => !ignoreTokens.contains("PatDefOrDcl")
-    case d: Decl.Val  => !ignoreTokens.contains("PatDefOrDcl")
-    case d: Decl.Type => !ignoreTokens.contains("TypeDefOrDcl")
-    case _            => false
-  }
-
   private def check(t: Tree, p: ScalaDocWithTree, indentStyle: DocIndentStyle): List[ScalastyleError] = {
     val list = p.tree match {
       case d: Defn.Object => checkObject(d, p)
@@ -136,32 +114,15 @@ class ScalaDocChecker extends CombinedMetaChecker {
       case _ => Nil
     }
 
-    list ::: indentErrors(t.pos.startLine + 1, indentStyle, ScalaDocIndent.parse(p.comment, p.previousWhiteSpace))
+    list ::: indentErrors(t.pos.startLine + 1, indentStyle, ScalaDocIndent.parse(p.comment.text, p.previousWhiteSpace))
   }
 
-  private def extractMods(t: Tree): List[Mod] = {
-    t match {
-      case d: Defn.Object => d.mods
-      case d: Defn.Class  => d.mods
-      case d: Defn.Trait  => d.mods
-
-      case d: Defn.Def  => d.mods
-      case d: Defn.Var  => d.mods
-      case d: Defn.Val  => d.mods
-      case d: Defn.Type => d.mods
-
-      case d: Decl.Def  => d.mods
-      case d: Decl.Var  => d.mods
-      case d: Decl.Val  => d.mods
-      case d: Decl.Type => d.mods
-      case _            => Nil
-    }
-  }
 
   private def isPrivate(t: Tree): Boolean = extractMods(t).exists(isPrivate)
   private def isOverride(t: Tree): Boolean = extractMods(t).exists(isOverride)
 
   private def checkObject(c: Defn.Object, sd: ScalaDocWithTree): List[ScalastyleError] = {
+    // TODO what about inheritance
     // TODO do we need to check the description?
     Nil
   }
@@ -332,10 +293,49 @@ object ScalaDocChecker {
     val wrongTokensToIgnore = tokensToIgnore.diff(availableTokensToIgnore)
     if (wrongTokensToIgnore.nonEmpty) {
       throw new IllegalArgumentException(
-        s"ignoreTokenTypes contained wrong types: ${wrongTokensToIgnore.toList.sorted}, " +
-          s"available types are $availableTokensToIgnore")
+        s"ignoreTokenTypes contained wrong types: ${wrongTokensToIgnore.toList.sorted.mkString(",")}, " +
+          s"available types are ${availableTokensToIgnore.toList.sorted.mkString(",")}")
     }
   }
+
+  // scalastyle:off cyclomatic.complexity
+
+  def scaladocTree(ignoreTokens: Set[String])(t: Tree): Boolean = t match {
+    case d: Defn.Object => !ignoreTokens.contains("TmplDef")
+    case d: Defn.Class  => !ignoreTokens.contains("TmplDef")
+    case d: Defn.Trait  => !ignoreTokens.contains("TmplDef")
+
+    case d: Defn.Def  => !ignoreTokens.contains("FunDefOrDcl")
+    case d: Defn.Var  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Defn.Val  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Defn.Type => !ignoreTokens.contains("TypeDefOrDcl")
+
+    case d: Decl.Def  => !ignoreTokens.contains("FunDefOrDcl")
+    case d: Decl.Var  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Decl.Val  => !ignoreTokens.contains("PatDefOrDcl")
+    case d: Decl.Type => !ignoreTokens.contains("TypeDefOrDcl")
+    case _            => false
+  }
+
+  def extractMods(t: Tree): List[Mod] = t match {
+    case d: Defn.Object => d.mods
+    case d: Defn.Class  => d.mods
+    case d: Defn.Trait  => d.mods
+
+    case d: Defn.Def  => d.mods
+    case d: Defn.Var  => d.mods
+    case d: Defn.Val  => d.mods
+    case d: Defn.Type => d.mods
+
+    case d: Decl.Def  => d.mods
+    case d: Decl.Var  => d.mods
+    case d: Decl.Val  => d.mods
+    case d: Decl.Type => d.mods
+    case _            => Nil
+  }
+
+  // scalastyle:on cyclomatic.complexity
+
 }
 
 /**
@@ -352,17 +352,17 @@ object ScalaDocIndent {
     case "scaladoc"    => ScalaDocStyle
     case "javadoc"     => JavaDocStyle
     case "anydoc" | "" => AnyDocStyle
-    case _             => throw new RuntimeException(s"Unsupported ScalaDocChecker indentStyle: '$name'")
+    case _             => throw new IllegalArgumentException(s"Unsupported ScalaDocChecker indentStyle: '$name'")
   }
 
   /**
     * Take the ``raw`` and parse an instance of ``ScalaDoc``
-    * @param comment the token containing the scaladoc
+    * @param comment the text containing the scaladoc
     * @param previousWhitespace column number of scaladoc's first string
     * @return the parsed instance
     */
-  def parse(comment: Token.Comment, previousWhitespace: Int): DocIndentStyle = {
-    val strings = comment.text.split("\\n").toList
+  def parse(comment: String, previousWhitespace: Int): DocIndentStyle = {
+    val strings = comment.split("\\n").toList
 
     getStyle(strings.tail, UndefinedDocStyle, previousWhitespace)
   }
