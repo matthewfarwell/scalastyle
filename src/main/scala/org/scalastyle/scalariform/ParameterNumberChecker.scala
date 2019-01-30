@@ -16,9 +16,6 @@
 
 package org.scalastyle.scalariform
 
-import scalariform.parser.Param
-import scalariform.parser.ParamClauses
-
 class ParameterNumberChecker extends AbstractSingleMethodChecker[Int] {
   val errorKey = "parameter.number"
   val DefaultMaximumParameters = 8

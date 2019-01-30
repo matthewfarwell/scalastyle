@@ -20,7 +20,10 @@ package org.scalastyle
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.scalastyle.scalariform.SmVisitor
 import org.scalatest.junit.AssertionsForJUnit
+
+import scala.meta.tokens.Token.Comment
 
 class CommentFilterTest extends AssertionsForJUnit {
   @Test def testTokens(): Unit = {
@@ -28,7 +31,7 @@ class CommentFilterTest extends AssertionsForJUnit {
 // scalastyle:off
       // another comment
 // scalastyle:on"""
-    val comments = new CheckerUtils().parseScalariform(text).comments
+    val comments = SmVisitor.getTokens[Comment](new CheckerUtils().parseScalameta(text).tokens)
 
     val tokens = CommentFilter.findScalastyleComments(comments)
 
@@ -81,11 +84,11 @@ class CommentFilterTest extends AssertionsForJUnit {
     val source = """
 // scalastyle:ignore
  // scalastyle:ignore test
-some code //   scalastyle:ignore
+object A //   scalastyle:ignore
 """
   val expected = List( CommentFilter(None         ,Some(LineColumn(2,0)), Some(LineColumn(3,0)) )
-                     , CommentFilter(Some("test") ,Some(LineColumn(3,0)), Some(LineColumn(4,0)) )
-                     , CommentFilter(None         ,Some(LineColumn(4,0)), Some(LineColumn(5,0)) )
+                     , CommentFilter(Some("test") ,Some(LineColumn(3,1)), Some(LineColumn(4,0)) )
+                     , CommentFilter(None         ,Some(LineColumn(4,9)), Some(LineColumn(5,0)) )
                      )
   assertCommentFilter(expected, source)
   }
@@ -130,10 +133,10 @@ class foobar {
   // scalastyle:off
 }
 """
-  val expected = List( CommentFilter(Some("class.name"),   Some(LineColumn(6,0)), Some(LineColumn(7,0)))
-                     , CommentFilter(None              ,   Some(LineColumn(10,0)), Some(LineColumn(11,0)))
-                     , CommentFilter(Some("class.name"),   Some(LineColumn(14,0)), Some(LineColumn(15,0)))
-                     , CommentFilter(Some("magic.number"), Some(LineColumn(18,0)), Some(LineColumn(19,0)))
+  val expected = List( CommentFilter(Some("class.name"),   Some(LineColumn(6,20)), Some(LineColumn(7,0)))
+                     , CommentFilter(None              ,   Some(LineColumn(10,20)), Some(LineColumn(11,0)))
+                     , CommentFilter(Some("class.name"),   Some(LineColumn(14,20)), Some(LineColumn(15,0)))
+                     , CommentFilter(Some("magic.number"), Some(LineColumn(18,20)), Some(LineColumn(19,0)))
                      , CommentFilter(None,                 Some(LineColumn(11,2)), Some(LineColumn(13,2)))
                      , CommentFilter(None,                 Some(LineColumn(15,2)), Some(LineColumn(17,2)))
                      , CommentFilter(None,                 Some(LineColumn(19,2)), None)
@@ -142,8 +145,9 @@ class foobar {
   }
 
   private[this] def assertCommentFilter(expected: List[CommentFilter], text: String) = {
-    val hiddenTokenInfo = new CheckerUtils().parseScalariform(text).comments
+    val comments = SmVisitor.getTokens[Comment](new CheckerUtils().parseScalameta(text).tokens)
+
     val lines = Checker.parseLines(text)
-    assertEquals(expected.mkString("\n"), CommentFilter.findCommentFilters(hiddenTokenInfo, lines).mkString("\n"))
+    assertEquals(expected.mkString("\n"), CommentFilter.findCommentFilters(comments, lines).mkString("\n"))
   }
 }

@@ -16,9 +16,9 @@
 
 package org.scalastyle
 
-import _root_.scalariform.lexer.Comment
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.meta.tokens.Token.Comment
 
 case class CommentFilter(id: Option[String], start: Option[LineColumn], end: Option[LineColumn])
 case class CommentInter(id: Option[String], position: Int, off: Boolean)
@@ -31,11 +31,11 @@ object CommentFilter {
 
   private[this] def isComment(s: String): Boolean = allMatchers.exists(_.pattern.matcher(s.trim).matches)
 
-  def findScalastyleComments(tokens: List[Comment]): Iterable[Comment] = {
+  def findScalastyleComments(tokens: Seq[Comment]): Iterable[Comment] = {
     tokens.filter(c => isComment(c.text))
   }
 
-  def findCommentFilters(comments: List[Comment], lines: Lines): List[CommentFilter] =
+  def findCommentFilters(comments: Seq[Comment], lines: Lines): List[CommentFilter] =
     findOneLineCommentFilters(comments, lines) ++ findOnOffCommentFilters(comments, lines)
 
   private[this] def checkEmpty(s:String) = if (s != "") Some(s) else None
@@ -44,22 +44,23 @@ object CommentFilter {
     case ls: List[String] => ls
   }
 
-  private[this] def findOneLineCommentFilters(comments: List[Comment], lines: Lines):List[CommentFilter] =
-    for {
+  private[this] def findOneLineCommentFilters(comments: Seq[Comment], lines: Lines): List[CommentFilter] =
+    (for {
       comment      <- comments
       OneLine(s)   <- List(comment.text.trim)
-      (start, end) <- lines.toFullLineTuple(comment.token.offset).toList
       id           <- splitIds(s, true)
-    } yield CommentFilter(checkEmpty(id), Some(start), Some(end))
+    } yield {
+      CommentFilter(checkEmpty(id), Some(LineColumn(comment.pos.startLine + 1, comment.pos.startColumn)), Some(LineColumn(comment.pos.endLine+2, 0)))
+    }).toList
 
-  private[this] def findOnOffCommentFilters(comments: List[Comment], lines: Lines): List[CommentFilter] = {
-    val it:List[CommentInter] =
+  private[this] def findOnOffCommentFilters(comments: Seq[Comment], lines: Lines): List[CommentFilter] = {
+    val it: Seq[CommentInter] =
       for {
         comment                <- comments
         OnOff(onoff, idString) <- List(comment.text.trim) // this is a bit ugly
         id                     <- splitIds( idString )
       } yield CommentInter( checkEmpty(id)
-                          , comment.token.offset
+                          , comment.pos.start
                           , onoff == "off"
                           )
 

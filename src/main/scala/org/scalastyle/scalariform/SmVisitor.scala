@@ -32,7 +32,7 @@ object SmVisitor {
     def subs: List[T]
   }
 
-  protected[scalariform] def getTokens[T <: Token](tokens: Tokens)(implicit manifest: Manifest[T]): Seq[T] = {
+  def getTokens[T <: Token](tokens: Tokens)(implicit manifest: Manifest[T]): Seq[T] = {
     for {
       t <- tokens
       if manifest.runtimeClass.isAssignableFrom(t.getClass)

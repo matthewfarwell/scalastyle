@@ -18,13 +18,8 @@ package org.scalastyle
 
 import java.nio.charset.MalformedInputException
 
-import _root_.scalariform.lexer.Comment
-import _root_.scalariform.lexer.HiddenToken
-import _root_.scalariform.lexer.ScalaLexer
-import _root_.scalariform.lexer.Token
-import _root_.scalariform.parser.CompilationUnit
-import _root_.scalariform.parser.ScalaParser
 import org.langmeta.inputs.Position
+import org.scalastyle.scalariform.SmVisitor
 
 import scala.annotation.tailrec
 import scala.collection.JavaConversions.collectionAsScalaIterable
@@ -33,10 +28,9 @@ import scala.io.Codec
 import scala.meta.Source
 import scala.meta.Tree
 import scala.meta._
+import scala.meta.tokens.Token.Comment
 
 case class Line(text: String, start: Int, end: Int)
-
-case class HiddenTokenInfo(tokens: Seq[HiddenToken])
 
 case class LineColumn(line: Int, column: Int)
 
@@ -81,8 +75,6 @@ class ScalastyleChecker[T <: FileSpec](classLoader: Option[ClassLoader] = None) 
 
 }
 
-case class ScalariformAst(ast: CompilationUnit, comments: List[Comment])
-
 object Checker {
   def parseLines(source: String): Lines = {
 
@@ -102,16 +94,6 @@ object Checker {
 }
 
 class CheckerUtils(classLoader: Option[ClassLoader] = None) {
-  private def comments(tokens: List[Token]): List[Comment] = tokens.flatMap(t => {
-    if (t.associatedWhitespaceAndComments == null) Nil else t.associatedWhitespaceAndComments.comments // scalastyle:ignore null
-  })
-
-  def parseScalariform(source: String): ScalariformAst = {
-    val tokens = ScalaLexer.tokenise(source, forgiveErrors = true, "2.11.0")
-
-    ScalariformAst(new ScalaParser(tokens.toArray).compilationUnitOrScript(), comments(tokens))
-  }
-
   def parseScalameta(source: String): Tree = {
     val s = source.replaceAll("@return[ \t]", "@returns ") // hack for scaladoc parser
     s.parse[Source].get
@@ -122,28 +104,25 @@ class CheckerUtils(classLoader: Option[ClassLoader] = None) {
       Nil
     } else {
       val lines = Checker.parseLines(source)
-      lazy val scalariformAst = parseScalariform(source)
       lazy val scalametaTree = parseScalameta(source.replaceAllLiterally("\r", ""))
 
       val commentFilters = if (configuration.commentFilter) {
-        CommentFilter.findCommentFilters(scalariformAst.comments, lines)
+        CommentFilter.findCommentFilters(SmVisitor.getTokens[Comment](scalametaTree.tokens), lines)
       } else {
         Nil
       }
 
       classes
         .flatMap(cc => newInstance(cc.className, cc.level, cc.parameters, cc.customMessage, cc.customId))
-        .flatMap(c => execute(file, c, lines, scalariformAst, scalametaTree))
+        .flatMap(c => execute(file, c, lines, scalametaTree))
         .filter(m => CommentFilter.filterApplies(m, commentFilters))
     }
   }
 
-  private def execute[T <: FileSpec](file: T, c: Checker[_], lines: Lines, scalariformAst: ScalariformAst, scalametaTree: Tree): Seq[Message[T]] = {
+  private def execute[T <: FileSpec](file: T, c: Checker[_], lines: Lines, scalametaTree: Tree): Seq[Message[T]] = {
     try {
       c match {
         case c: FileChecker         => c.verify(file, c.level, lines, lines)
-        case c: ScalariformChecker  => c.verify(file, c.level, scalariformAst.ast, lines)
-        case c: CombinedChecker     => c.verify(file, c.level, CombinedAst(scalariformAst.ast, lines), lines)
         case c: ScalametaChecker    => c.verify(file, c.level, scalametaTree, lines)
         case c: CombinedMetaChecker => c.verify(file, c.level, CombinedMeta(scalametaTree, lines), lines)
         case _                      => Nil
@@ -258,8 +237,6 @@ trait Checker[A] {
     }
   }
 
-  def charsBetweenTokens(left: Token, right: Token): Int = right.offset - (left.offset + left.length)
-
   def verify[T <: FileSpec](file: T, level: Level, ast: A, lines: Lines): Seq[Message[T]] = {
     verify(ast).map(p => toStyleError(file, p, level, lines))
   }
@@ -268,8 +245,6 @@ trait Checker[A] {
 }
 
 trait FileChecker extends Checker[Lines]
-
-trait ScalariformChecker extends Checker[CompilationUnit]
 
 trait PositionErrorTrait {
   protected def toError(p: Position, args: List[String], errorKey: Option[String]): ColumnError = {
@@ -294,10 +269,6 @@ trait PositionErrorTrait {
 }
 
 trait ScalametaChecker extends Checker[Tree] with PositionErrorTrait
-
-case class CombinedAst(compilationUnit: CompilationUnit, lines: Lines)
-
-trait CombinedChecker extends Checker[CombinedAst]
 
 case class CombinedMeta(tree: Tree, lines: Lines)
 

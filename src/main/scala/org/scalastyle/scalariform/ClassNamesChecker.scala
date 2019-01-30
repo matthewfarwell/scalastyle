@@ -16,8 +16,6 @@
 
 package org.scalastyle.scalariform
 
-import _root_.scalariform.parser.Param
-import _root_.scalariform.parser.ParamClauses
 import org.scalastyle.CombinedMeta
 import org.scalastyle.CombinedMetaChecker
 import org.scalastyle.ScalastyleError
@@ -25,7 +23,6 @@ import org.scalastyle.scalariform.SmVisitor.sliding3
 import org.scalastyle.scalariform.SmVisitor.sliding5
 
 import scala.meta.Defn
-import scala.meta.Name
 import scala.meta.Pat
 import scala.meta.Term
 import scala.meta.Tree
