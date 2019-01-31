@@ -79,15 +79,15 @@ object SmVisitor {
   }
 
   def sliding2(tree: Tree)(implicit dialect: Dialect): Iterator[(Token, Token)] = {
-    tree.tokens.sliding(2).map(l => (l(0), l(1)))
+    tree.tokens.sliding(2).filter(_.size == 2).map(l => (l(0), l(1)))
   }
 
   def sliding3(tree: Tree, reverse: Boolean = false)(implicit dialect: Dialect): Iterator[(Token, Token, Token)] = {
-    tree.tokens.sliding(3).map(l => if (reverse) (l(2), l(1), l(0)) else (l(0), l(1), l(2)))
+    tree.tokens.sliding(3).filter(_.size == 3).map(l => if (reverse) (l(2), l(1), l(0)) else (l(0), l(1), l(2)))
   }
 
   def sliding5(tree: Tree)(implicit dialect: Dialect): Iterator[(Token, Token, Token, Token, Token)] = {
-    tree.tokens.sliding(5).map(l => (l(0), l(1), l(2), l(3), l(4))) // scalastyle:ignore magic.number
+    tree.tokens.sliding(5).filter(_.size == 5).map(l => (l(0), l(1), l(2), l(3), l(4))) // scalastyle:ignore magic.number
   }
 
   def isA[T, U](o: T, cls: Class[U]): Boolean = cls.isAssignableFrom(o.getClass)
